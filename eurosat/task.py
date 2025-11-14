@@ -3,14 +3,19 @@
 import warnings
 from datetime import datetime
 from pathlib import Path
+from typing import Dict, Literal, Optional, Tuple, cast
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from flwr_datasets import FederatedDataset
-from flwr_datasets.partitioner import IidPartitioner
+from flwr_datasets.partitioner import (
+    DirichletPartitioner,
+    IidPartitioner,
+    PathologicalPartitioner,
+)
 from torch.utils.data import DataLoader
-from torchvision.transforms import Compose, Normalize, ToTensor
+from torchvision.transforms import Compose, Normalize, ToTensor, Resize
+from torchvision.models import vit_b_16
 
 warnings.filterwarnings(
     "ignore",
@@ -19,34 +24,34 @@ warnings.filterwarnings(
 )
 
 class Net(nn.Module):
-    """Model (simple CNN adapted from 'PyTorch: A 60 Minute Blitz')"""
+    """Model (Vision Transformer B/16)"""
 
     def __init__(self):
         super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(3, 32, 5)
-        self.bn1 = nn.BatchNorm2d(32)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(32, 64, 5)
-        self.bn2 = nn.BatchNorm2d(64)
-        self.conv3 = nn.Conv2d(64, 96, 3)
-        self.bn3 = nn.BatchNorm2d(96)
-        self.fc1 = nn.Linear(96 * 5 * 5, 128)
-        self.fc2 = nn.Linear(128, 128)
-        self.fc3 = nn.Linear(128, 10)
+        self.vit = vit_b_16(pretrained=False)
+        self.vit.heads = nn.Linear(self.vit.heads.head.in_features, 10)
 
     def forward(self, x):
-        x = self.pool(F.relu(self.bn1(self.conv1(x))))
-        x = self.pool(F.relu(self.bn2(self.conv2(x))))
-        x = self.pool(F.relu(self.bn3(self.conv3(x))))
-        x = x.view(-1, 96 * 5 * 5)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        return self.fc3(x)
+        return self.vit(x)
 
 
-fds = None  # Cache FederatedDataset
+fds_cache: Dict[
+    Tuple[
+        int,
+        str,
+        Optional[float],
+        int,
+        Optional[int],
+        Optional[str],
+    ],
+    FederatedDataset,
+] = {}
 
-pytorch_transforms = Compose([ToTensor(), Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+pytorch_transforms = Compose([
+    Resize((224, 224)),
+    ToTensor(), 
+    Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+])
 
 
 def apply_transforms(batch):
@@ -55,17 +60,103 @@ def apply_transforms(batch):
     return batch
 
 
-def load_data(partition_id: int, num_partitions: int):
-    """Load partition EuroSAT data."""
-    # Only initialize `FederatedDataset` once
-    global fds
-    if fds is None:
-        partitioner = IidPartitioner(num_partitions=num_partitions)
-        fds = FederatedDataset(
+def _get_federated_dataset(
+    num_partitions: int,
+    partitioning: str,
+    dirichlet_alpha: Optional[float],
+    seed: int,
+    num_classes_per_partition: Optional[int],
+    class_assignment_mode: Optional[str],
+) -> FederatedDataset:
+    """Return a cached FederatedDataset configured with the requested partitioner."""
+    normalized_partitioning = partitioning.lower()
+    normalized_assignment_mode = (
+        class_assignment_mode.lower() if class_assignment_mode else None
+    )
+    cache_key = (
+        num_partitions,
+        normalized_partitioning,
+        dirichlet_alpha,
+        seed,
+        num_classes_per_partition,
+        normalized_assignment_mode,
+    )
+    if cache_key not in fds_cache:
+        if normalized_partitioning == "iid":
+            partitioner = IidPartitioner(num_partitions=num_partitions)
+        elif normalized_partitioning in {"dirichlet", "non-iid"}:
+            if dirichlet_alpha is None:
+                raise ValueError(
+                    "dirichlet_alpha must be provided when using the Dirichlet "
+                    "partitioner."
+                )
+            partitioner = DirichletPartitioner(
+                num_partitions=num_partitions,
+                partition_by="label",
+                alpha=dirichlet_alpha,
+                shuffle=True,
+                seed=seed,
+            )
+        elif normalized_partitioning in {
+            "pathological",
+            "pathological-single-class",
+            "single-class",
+        }:
+            classes_per_partition = num_classes_per_partition or 1
+            assignment_mode = normalized_assignment_mode or "deterministic"
+            valid_modes = {"random", "deterministic", "first-deterministic"}
+            if assignment_mode not in valid_modes:
+                raise ValueError(
+                    "Invalid class_assignment_mode for pathological partitioning. "
+                    f"Expected one of {valid_modes}, received '{assignment_mode}'."
+                )
+            cast_assignment_mode = cast(
+                Literal["random", "deterministic", "first-deterministic"],
+                assignment_mode,
+            )
+            partitioner = PathologicalPartitioner(
+                num_partitions=num_partitions,
+                partition_by="label",
+                num_classes_per_partition=classes_per_partition,
+                class_assignment_mode=cast_assignment_mode,
+                shuffle=True,
+                seed=seed,
+            )
+        else:
+            raise ValueError(
+                f"Unsupported partitioning strategy '{partitioning}'. "
+                "Valid options are 'iid', 'dirichlet', or 'pathological-single-class'."
+            )
+        fds_cache[cache_key] = FederatedDataset(
             dataset="tanganke/eurosat",
             partitioners={"train": partitioner},
         )
+    return fds_cache[cache_key]
+
+
+def load_data(
+    partition_id: int,
+    num_partitions: int,
+    partitioning: str = "iid",
+    dirichlet_alpha: Optional[float] = None,
+    partition_seed: int = 42,
+    num_classes_per_partition: Optional[int] = None,
+    class_assignment_mode: Optional[str] = None,
+    max_samples_per_client: Optional[int] = None,
+):
+    """Load the EuroSAT partition specified by the node configuration."""
+    fds = _get_federated_dataset(
+        num_partitions=num_partitions,
+        partitioning=partitioning,
+        dirichlet_alpha=dirichlet_alpha,
+        seed=partition_seed,
+        num_classes_per_partition=num_classes_per_partition,
+        class_assignment_mode=class_assignment_mode,
+    )
     partition = fds.load_partition(partition_id)
+    if max_samples_per_client is not None:
+        subset_size = min(max_samples_per_client, len(partition))
+        partition = partition.shuffle(seed=partition_seed).select(range(subset_size))
     # Divide data on each node: 80% train, 20% test
     partition_train_test = partition.train_test_split(test_size=0.2, seed=42)
     # Construct dataloaders
