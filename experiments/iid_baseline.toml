@@ -1,0 +1,15 @@
+# IID Baseline Experiment Configuration
+# This represents the idealized scenario where all satellites see balanced data
+
+# Training configuration - FAST for demo
+num-server-rounds = 3
+fraction-train = 0.5  # Use 50% of clients (5 satellites)
+local-epochs = 1
+lr = 0.001
+
+# Data partitioning - IID (balanced)
+partitioning = "iid"
+partition-seed = 42
+
+# Limit samples for faster experimentation
+max-samples-per-client = 200

@@ -1,0 +1,23 @@
+# Non-IID Realistic Experiment Configuration
+# Simulates realistic satellite scenario where each satellite sees highly imbalanced terrain
+
+# Training configuration - FAST for demo
+num-server-rounds = 3
+fraction-train = 0.5  # Use 50% of clients (5 satellites)
+local-epochs = 1
+lr = 0.001
+
+# Data partitioning - Non-IID with Dirichlet
+partitioning = "dirichlet"
+dirichlet-alpha = 0.1  # Very low alpha = highly imbalanced (realistic)
+partition-seed = 42
+
+# Limit samples for faster experimentation
+max-samples-per-client = 200
+
+# Explanation:
+# - Alpha = 0.1 creates highly non-IID data
+# - Each satellite will see mostly 1-2 terrain types
+# - Satellite over ocean: 90% water, 10% other terrain
+# - Satellite over Sahara: 95% desert/brushland, 5% other
+# - This reflects real-world satellite deployment patterns
