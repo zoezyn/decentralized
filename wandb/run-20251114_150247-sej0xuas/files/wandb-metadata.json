@@ -1,0 +1,37 @@
+{
+  "os": "macOS-26.1-arm64-arm-64bit",
+  "python": "CPython 3.12.12",
+  "startedAt": "2025-11-14T14:02:47.759873Z",
+  "args": [
+    "--app",
+    ".",
+    "--num-supernodes",
+    "10"
+  ],
+  "program": "/opt/miniconda3/envs/sat/bin/flower-simulation",
+  "email": "yanzengyu98@gmail.com",
+  "root": "/Users/zoe.yan/Desktop/repo/hackathons/decentralized/berlin25-eurosat",
+  "host": "MAC-F403KFLQW7",
+  "executable": "/opt/miniconda3/envs/sat/bin/python3.12",
+  "cpu_count": 12,
+  "cpu_count_logical": 12,
+  "disk": {
+    "/": {
+      "total": "494384795648",
+      "used": "455732887552"
+    }
+  },
+  "memory": {
+    "total": "38654705664"
+  },
+  "apple": {
+    "name": "Apple M3 Pro",
+    "ecpuCores": 6,
+    "pcpuCores": 6,
+    "gpuCores": 18,
+    "memoryGb": 36,
+    "swapTotalBytes": "9663676416",
+    "ramTotalBytes": "38654705664"
+  },
+  "writerId": "3nqjhe9d64ow21brjjv146ju8ml5jth9"
+}
