@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 import wandb
 
 from eurosat.task import Net, test, apply_transforms, create_run_dir
+from eurosat.battery_aware_strategy import BatteryAwareFedAvg, print_final_battery_report
 
 # Create ServerApp
 app = ServerApp()
@@ -29,30 +30,66 @@ def main(grid: Grid, context: Context) -> None:
     fraction_train: float = context.run_config["fraction-train"]
     num_rounds: int = context.run_config["num-server-rounds"]
     lr: float = context.run_config["lr"]
+    
+    # Battery simulation config (optional)
+    battery_enabled: bool = context.run_config.get("battery-enabled", True)
 
     # Load global model
     global_model = Net()
     arrays = ArrayRecord(global_model.state_dict())
 
-    # Initialize FedAvg strategy
-    strategy = FedAvg(fraction_train=fraction_train)
+    # Initialize strategy based on configuration
+    if battery_enabled:
+        print("\n🔋 Battery-Aware Mode Enabled")
+        battery_config = {
+            'num_satellites': 10,
+            'initial_battery': context.run_config.get("initial-battery", 80.0),
+            'charge_rate': context.run_config.get("charge-rate", 3.0),
+            'train_cost': context.run_config.get("train-cost", 15.0),
+            'comm_cost': context.run_config.get("comm-cost", 5.0),
+            'min_battery_threshold': context.run_config.get("min-battery-threshold", 30.0),
+            'day_night_cycle': context.run_config.get("day-night-cycle", True),
+            'orbit_period': context.run_config.get("orbit-period", 6),
+        }
+        strategy = BatteryAwareFedAvg(
+            fraction_train=fraction_train,
+            battery_config=battery_config
+        )
+    else:
+        print("\n⚙️  Standard FedAvg Mode")
+        strategy = FedAvg(fraction_train=fraction_train)
 
     # Start strategy, run FedAvg for `num_rounds`
+    print(f"\n{'='*70}")
+    print(f"🚀 Starting Federated Learning")
+    print(f"   Rounds: {num_rounds}")
+    print(f"   Fraction train: {fraction_train}")
+    print(f"   Learning rate: {lr}")
+    print(f"{'='*70}\n")
+    
     result = strategy.start(
         grid=grid,
         initial_arrays=arrays,
         train_config=ConfigRecord({"lr": lr}),
         num_rounds=num_rounds,
-        evaluate_fn=get_global_evaluate_fn(),
+        evaluate_fn=get_global_evaluate_fn(strategy),
     )
+
+    # Print battery report if battery mode was enabled
+    if battery_enabled and isinstance(strategy, BatteryAwareFedAvg):
+        print_final_battery_report(strategy)
 
     # Save final model to disk
     print(f"\nSaving final model to disk at {save_path}...")
     state_dict = result.arrays.to_torch_state_dict()
     torch.save(state_dict, f"{save_path}/final_model.pt")
+    
+    print(f"\n{'='*70}")
+    print(f"✅ Training Complete!")
+    print(f"{'='*70}\n")
 
 
-def get_global_evaluate_fn():
+def get_global_evaluate_fn(strategy):
     """Return an evaluation function for server-side evaluation."""
 
     def global_evaluate(server_round: int, arrays: ArrayRecord) -> MetricRecord:
@@ -77,12 +114,29 @@ def get_global_evaluate_fn():
         net.to(device)
         # Evaluate global model on test set
         loss, accuracy = test(net, testloader, device=device)
-        wandb.log(
-            {
-                "Global Test Loss": loss,
-                "Global Test Accuracy": accuracy,
-            }
-        )
+        
+        # Prepare logging dictionary
+        log_dict = {
+            "round": server_round,
+            "Global Test Loss": loss,
+            "Global Test Accuracy": accuracy,
+        }
+        
+        # Add battery information if using battery-aware strategy
+        if isinstance(strategy, BatteryAwareFedAvg):
+            battery_stats = strategy.battery_sim.get_statistics()
+            log_dict.update({
+                "evaluation/battery_avg": battery_stats['avg_battery'],
+                "evaluation/battery_min": min(battery_stats['current_batteries'].values()),
+                "evaluation/battery_max": max(battery_stats['current_batteries'].values()),
+                "evaluation/satellites_below_threshold": battery_stats['satellites_below_threshold'],
+                "evaluation/total_skipped": battery_stats['total_skipped'],
+            })
+            
+            print(f"   Battery status during evaluation: avg={battery_stats['avg_battery']:.1f}%, "
+                  f"below threshold={battery_stats['satellites_below_threshold']}")
+        
+        wandb.log(log_dict)
         return MetricRecord({"accuracy": accuracy, "loss": loss})
 
     return global_evaluate
