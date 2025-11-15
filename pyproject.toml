@@ -43,15 +43,16 @@ num-server-rounds = 3     # More rounds to see battery depletion
 fraction-train = 0.5
 local-epochs = 1
 lr = 0.001
+model-variant = "baseline"
 
 # Data partition
-partitioner_method = "non-iid"
+partitioner_method = "iid"
 
 # Battery simulation config (satellite resource constraints)
-battery-enabled = false
+battery-enabled = true
 initial-battery = 80.0
 charge-rate = 3.0
-train-cost = 20.0
+train-cost = 15.0
 comm-cost = 5.0
 min-battery-threshold = 30.0
 day-night-cycle = true

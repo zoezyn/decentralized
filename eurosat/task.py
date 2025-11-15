@@ -64,21 +64,22 @@ class SlimResidualBlock(nn.Module):
 
 
 class CompressedResNet(nn.Module):
-    """Shrinked residual network (~4x fewer params than ResNet-18)."""
+    """Shrinked residual network (~2x fewer params than ResNet-18)."""
 
     def __init__(self, num_classes=10):
         super().__init__()
+        width = [32, 64, 96, 128]
         self.stem = nn.Sequential(
-            nn.Conv2d(3, 24, kernel_size=3, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(24),
+            nn.Conv2d(3, width[0], kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(width[0]),
             nn.ReLU(inplace=True),
         )
-        self.layer1 = self._make_layer(24, 32, blocks=2, stride=1)
-        self.layer2 = self._make_layer(32, 48, blocks=2, stride=2)
-        self.layer3 = self._make_layer(48, 72, blocks=2, stride=2)
-        self.layer4 = self._make_layer(72, 96, blocks=2, stride=2)
+        self.layer1 = self._make_layer(width[0], width[0], blocks=3, stride=1)
+        self.layer2 = self._make_layer(width[0], width[1], blocks=3, stride=2)
+        self.layer3 = self._make_layer(width[1], width[2], blocks=3, stride=2)
+        self.layer4 = self._make_layer(width[2], width[3], blocks=2, stride=2)
         self.avgpool = nn.AdaptiveAvgPool2d(1)
-        self.fc = nn.Linear(96, num_classes)
+        self.fc = nn.Linear(width[3], num_classes)
 
     def _make_layer(self, in_channels, out_channels, blocks, stride):
         layers = [SlimResidualBlock(in_channels, out_channels, stride)]
