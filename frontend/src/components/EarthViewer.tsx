@@ -1,5 +1,5 @@
 import { Canvas, useFrame, type ThreeEvent } from "@react-three/fiber";
-import { OrbitControls, useGLTF, Stars } from "@react-three/drei";
+import { OrbitControls, useGLTF, Stars, Text } from "@react-three/drei";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Battery, Zap, Play } from "lucide-react";
 import { useApi } from "@/contexts/ApiContext";
+import BatteryConsoleView from "./BatteryConsoleView";
 
 function Earth() {
   const { scene } = useGLTF('/models/Earth_1_12756.glb');
@@ -70,12 +71,17 @@ function OrbitingSatellite({
   config,
   onSelect,
   isHighlighted = false,
+  batteryLevel = 80,
+  batteryColor = "#22c55e",
 }: {
   config: SatelliteConfig;
   onSelect: (satelliteId: string) => void;
   isHighlighted?: boolean;
+  batteryLevel?: number;
+  batteryColor?: string;
 }) {
   const satelliteRef = useRef<THREE.Group>(null);
+  const batteryDotRef = useRef<THREE.Mesh>(null);
   const orbitAngleRef = useRef(config.initialAngle ?? 0);
   const orbitSpeedRef = useRef(config.baseOrbitSpeed * 2);
   const rotationSpeedRef = useRef(config.baseRotationSpeed * 2);
@@ -156,6 +162,15 @@ function OrbitingSatellite({
     const rotationStep = rotationSpeedRef.current * delta;
     satelliteRef.current.rotation.x += rotationStep;
     satelliteRef.current.rotation.y += rotationStep * 0.8;
+
+    // Battery dot blinking animation
+    if (batteryDotRef.current) {
+      const time = Date.now() * 0.003;
+      const blinkIntensity = Math.sin(time + config.initialAngle) * 0.3 + 0.7;
+      const material = batteryDotRef.current.material as THREE.MeshBasicMaterial;
+      material.emissiveIntensity = blinkIntensity;
+      material.opacity = blinkIntensity;
+    }
   });
 
   return (
@@ -197,6 +212,31 @@ function OrbitingSatellite({
           />
         </mesh>
       )}
+
+      {/* Battery indicator dot */}
+      <mesh ref={batteryDotRef} position={[0, 0.8, 0]}>
+        <sphereGeometry args={[0.1, 8, 8]} />
+        <meshBasicMaterial 
+          color={batteryColor}
+          emissive={batteryColor}
+          emissiveIntensity={0.5}
+          transparent
+          opacity={0.9}
+        />
+      </mesh>
+
+      {/* Satellite name label */}
+      <Text
+        position={[0, -0.8, 0]}
+        fontSize={0.15}
+        color="#ffffff"
+        anchorX="center"
+        anchorY="middle"
+        outlineWidth={0.02}
+        outlineColor="#000000"
+      >
+        {config.name}
+      </Text>
     </group>
   );
 }
@@ -214,7 +254,36 @@ export default function EarthViewer() {
   const [selectedSatelliteId, setSelectedSatelliteId] = useState<string | null>(null);
   const [isTraining, setIsTraining] = useState(false);
   const [highlightedSatellite, setHighlightedSatellite] = useState<string | null>(null);
+  const [batteryData, setBatteryData] = useState<Record<string, any>>({});
   const { fetchData } = useApi();
+
+  // Fetch battery data periodically
+  useEffect(() => {
+    const fetchBatteryData = async () => {
+      try {
+        const response = await fetchData('/api/battery/latest');
+        if (response.status === 'success' && response.data?.battery_levels) {
+          setBatteryData(response.data.battery_levels);
+        }
+      } catch (error) {
+        // Silently handle battery fetch errors
+      }
+    };
+
+    const interval = setInterval(fetchBatteryData, 200); // Update every 200ms
+    fetchBatteryData(); // Initial fetch
+
+    return () => clearInterval(interval);
+  }, [fetchData]);
+
+  // Get battery color based on level
+  const getBatteryColor = (batteryLevel: number): string => {
+    if (batteryLevel >= 70) return "#22c55e"; // Green
+    if (batteryLevel >= 50) return "#eab308"; // Yellow  
+    if (batteryLevel >= 30) return "#f97316"; // Orange
+    if (batteryLevel >= 15) return "#ef4444"; // Red
+    return "#7f1d1d"; // Dark red
+  };
 
   const satellites: SatelliteConfig[] = [
     {
@@ -420,25 +489,8 @@ export default function EarthViewer() {
   }, []);
 
   const startTraining = useCallback(() => {
-    if (isTraining) return;
-    
-    setIsTraining(true);
-    let currentIndex = 0;
-    
-    const highlightNext = () => {
-      if (currentIndex < satellites.length) {
-        setHighlightedSatellite(satellites[currentIndex].id);
-        currentIndex++;
-        setTimeout(highlightNext, 1000); // Highlight each satellite for 1 second
-      } else {
-        // Training complete - reset highlighting
-        setHighlightedSatellite(null);
-        setIsTraining(false);
-      }
-    };
-    
-    highlightNext();
-  }, [isTraining, satellites]);
+    setIsTraining(!isTraining);
+  }, [isTraining]);
 
   return (
     <div className="w-full h-screen relative">
@@ -446,13 +498,16 @@ export default function EarthViewer() {
       <div className="absolute top-4 left-4 z-10">
         <Button
           onClick={startTraining}
-          disabled={isTraining}
-          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+          className="bg-blue-600 hover:bg-blue-700"
         >
           <Play className="h-4 w-4 mr-2" />
-          {isTraining ? 'Training...' : 'Train'}
+          {isTraining ? 'Hide Battery View' : 'Show Battery View'}
         </Button>
       </div>
+
+      {/* Battery Console View */}
+      <BatteryConsoleView isVisible={isTraining} />
+
 
       <Canvas
         camera={{ position: [0, 0, 8], fov: 45 }}
@@ -470,14 +525,22 @@ export default function EarthViewer() {
           <pointLight position={[0, -10, 0]} intensity={0.8} color="#4a9eff" />
           
           <Earth />
-          {satellites.map((satellite) => (
-            <OrbitingSatellite 
-              key={satellite.id} 
-              config={satellite} 
-              onSelect={handleSatelliteSelect}
-              isHighlighted={highlightedSatellite === satellite.id}
-            />
-          ))}
+          {satellites.map((satellite) => {
+            const batteryInfo = batteryData[satellite.id];
+            const batteryLevel = batteryInfo?.battery || 80;
+            const batteryColor = getBatteryColor(batteryLevel);
+            
+            return (
+              <OrbitingSatellite 
+                key={satellite.id} 
+                config={satellite} 
+                onSelect={handleSatelliteSelect}
+                isHighlighted={highlightedSatellite === satellite.id}
+                batteryLevel={batteryLevel}
+                batteryColor={batteryColor}
+              />
+            );
+          })}
           
           <Stars
             radius={100} 
