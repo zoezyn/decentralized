@@ -221,3 +221,9 @@ Thumbs.db
 node_modules/
 eurosat/__pycache__/*
 wandb/
+wandb/debug-internal.log
+wandb/debug.log
+wandb/latest-run
+eurosat/__pycache__/client_app.cpython-312.pyc
+eurosat/__pycache__/server_app.cpython-312.pyc
+eurosat/__pycache__/task.cpython-312.pyc
