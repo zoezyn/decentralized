@@ -19,6 +19,7 @@ dependencies = [
     "torch==2.7.1",
     "torchvision==0.22.1",
     "wandb==0.23.0",
+    "pyserial>=3.5",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -34,10 +35,26 @@ clientapp = "eurosat.client_app:app"
 
 # Custom config values accessible via `context.run_config`
 [tool.flwr.app.config]
-num-server-rounds = 3
+num-server-rounds = 3     # More rounds to see battery depletion
 fraction-train = 0.5
 local-epochs = 1
 lr = 0.001
+
+# Battery simulation config (satellite resource constraints)
+battery-enabled = true
+initial-battery = 80.0
+charge-rate = 3.0
+train-cost = 20.0
+comm-cost = 5.0
+min-battery-threshold = 30.0
+day-night-cycle = true
+orbit-period = 6
+
+# CubeSat integration (real hardware)
+cubesat-enabled = false  # Set to true to use real CubeSat
+cubesat-port = "/dev/cu.usbserial-1110"
+cubesat-baud = 9600
+cubesat-id = 0  # Which satellite ID is the CubeSat (0-9)
 
 # Default federation to use when running the app
 [tool.flwr.federations]
