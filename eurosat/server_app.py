@@ -7,10 +7,62 @@ from flwr.serverapp import Grid, ServerApp
 from flwr.serverapp.strategy import FedAvg
 from torch.utils.data import DataLoader
 import wandb
+import threading
+import requests
+import json
 
 from eurosat.task import Net, test, apply_transforms, create_run_dir
 from eurosat.battery_aware_strategy import BatteryAwareFedAvg, print_final_battery_report
 from eurosat.cubesat_battery_reader import initialize_cubesat, read_cubesat_battery, cleanup_cubesat
+
+# Webhook URL for sending battery data to frontend
+WEBHOOK_URL = "http://localhost:8000/api/webhook/battery"
+
+def send_battery_webhook(battery_data, round_num):
+    """Send battery data to frontend via webhook"""
+    try:
+        payload = {
+            "type": "battery_update",
+            "round": round_num,
+            "battery_levels": battery_data,
+            "timestamp": torch.tensor(0).item()  # Simple timestamp
+        }
+        
+        response = requests.post(WEBHOOK_URL, json=payload, timeout=1)
+        if response.status_code == 200:
+            print(f"🔋 Sent battery data for round {round_num}")
+        else:
+            print(f"⚠️ Webhook failed: {response.status_code}")
+    except Exception as e:
+        print(f"⚠️ Webhook error: {e}")
+
+# Custom strategy that sends webhooks
+class WebhookBatteryAwareFedAvg(BatteryAwareFedAvg):
+    def aggregate_train(self, server_round, replies):
+        arrays, metrics = super().aggregate_train(server_round, replies)
+        
+        # Send battery data via webhook
+        if hasattr(self, 'selected_clients_this_round'):
+            battery_stats = self.battery_sim.step(server_round, self.selected_clients_this_round)
+            
+            # Convert battery data to frontend format
+            frontend_data = {}
+            for sat_id, battery in battery_stats['batteries'].items():
+                frontend_data[f"sat-{sat_id}"] = {
+                    "battery": battery,
+                    "in_sunlight": self.battery_sim.is_in_sunlight(server_round, sat_id),
+                    "can_train": battery >= self.battery_sim.min_battery_threshold,
+                    "status": "operational" if battery >= self.battery_sim.min_battery_threshold else "low_battery"
+                }
+            
+            # Send webhook in background thread
+            threading.Thread(
+                target=send_battery_webhook, 
+                args=(frontend_data, server_round),
+                daemon=True
+            ).start()
+        
+        return arrays, metrics
 
 # Create ServerApp
 app = ServerApp()
@@ -70,7 +122,7 @@ def main(grid: Grid, context: Context) -> None:
             'cubesat_id': cubesat_id if cubesat_reader else None,
             'cubesat_battery_reader': cubesat_reader,
         }
-        strategy = BatteryAwareFedAvg(
+        strategy = WebhookBatteryAwareFedAvg(
             fraction_train=fraction_train,
             battery_config=battery_config
         )
