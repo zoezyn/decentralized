@@ -1,5 +1,7 @@
 """eurosat: A Flower / PyTorch app."""
 
+from typing import Any, Dict
+
 import torch
 from flwr.app import ArrayRecord, Context, Message, MetricRecord, RecordDict
 from flwr.clientapp import ClientApp
@@ -12,6 +14,32 @@ from eurosat.task import train as train_fn
 app = ClientApp()
 
 
+def _resolve_partitioning_config(context: Context) -> Dict[str, Any]:
+    """Extract partitioning configuration from the run config."""
+    run_config = context.run_config
+    config: Dict[str, Any] = {}
+
+    # Get partitioning strategy
+    partitioning = run_config.get("partitioning", "iid")
+    config["partitioning"] = str(partitioning).lower()
+
+    # Get Dirichlet alpha if specified
+    alpha_value = run_config.get("dirichlet-alpha")
+    if alpha_value is not None:
+        config["dirichlet_alpha"] = float(alpha_value)
+
+    # Get partition seed
+    seed_value = run_config.get("partition-seed", 42)
+    config["partition_seed"] = int(seed_value)
+
+    # Get max samples per client if specified
+    max_samples = run_config.get("max-samples-per-client")
+    if max_samples is not None:
+        config["max_samples_per_client"] = int(max_samples)
+
+    return config
+
+
 @app.train()
 def train(msg: Message, context: Context):
     """Train the model on local data."""
@@ -22,10 +50,15 @@ def train(msg: Message, context: Context):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    # Load the data
+    # Load the data with partitioning config
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
-    trainloader, _ = load_data(partition_id, num_partitions)
+    partition_config = _resolve_partitioning_config(context)
+    trainloader, _ = load_data(
+        partition_id=partition_id,
+        num_partitions=num_partitions,
+        **partition_config,
+    )
 
     # Call the training function
     train_loss = train_fn(
@@ -57,10 +90,15 @@ def evaluate(msg: Message, context: Context):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    # Load the data
+    # Load the data with partitioning config
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
-    _, valloader = load_data(partition_id, num_partitions)
+    partition_config = _resolve_partitioning_config(context)
+    _, valloader = load_data(
+        partition_id=partition_id,
+        num_partitions=num_partitions,
+        **partition_config,
+    )
 
     # Call the evaluation function
     eval_loss, eval_acc = test_fn(
@@ -74,6 +112,7 @@ def evaluate(msg: Message, context: Context):
         "eval_loss": eval_loss,
         "eval_acc": eval_acc,
         "num-examples": len(valloader.dataset),
+        "partition_id": partition_id,
     }
     metric_record = MetricRecord(metrics)
     content = RecordDict({"metrics": metric_record})

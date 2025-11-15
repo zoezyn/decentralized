@@ -39,6 +39,14 @@ fraction-train = 0.5
 local-epochs = 1
 lr = 0.001
 
+# Data partitioning configuration
+partitioning = "iid"
+partition-seed = 42
+dirichlet-alpha = 0.5
+num-classes-per-partition = 1
+class-assignment-mode = "deterministic"
+max-samples-per-client = 10000
+
 # Default federation to use when running the app
 [tool.flwr.federations]
 default = "local-simulation"

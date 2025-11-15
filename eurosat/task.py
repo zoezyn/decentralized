@@ -8,8 +8,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from flwr_datasets import FederatedDataset
-from flwr_datasets.partitioner import IidPartitioner
+from flwr_datasets.partitioner import IidPartitioner, DirichletPartitioner
 from torch.utils.data import DataLoader
+from typing import Optional
 from torchvision.transforms import Compose, Normalize, ToTensor
 
 warnings.filterwarnings(
@@ -44,7 +45,7 @@ class Net(nn.Module):
         return self.fc3(x)
 
 
-fds = None  # Cache FederatedDataset
+fds_cache = {}  # Cache FederatedDataset by config
 
 pytorch_transforms = Compose([ToTensor(), Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
@@ -55,17 +56,50 @@ def apply_transforms(batch):
     return batch
 
 
-def load_data(partition_id: int, num_partitions: int):
-    """Load partition EuroSAT data."""
-    # Only initialize `FederatedDataset` once
-    global fds
-    if fds is None:
-        partitioner = IidPartitioner(num_partitions=num_partitions)
-        fds = FederatedDataset(
+def load_data(
+    partition_id: int,
+    num_partitions: int,
+    partitioning: str = "iid",
+    dirichlet_alpha: Optional[float] = None,
+    partition_seed: int = 42,
+    max_samples_per_client: Optional[int] = None,
+):
+    """Load partition EuroSAT data with configurable partitioning."""
+    global fds_cache
+
+    # Create cache key based on partitioning config
+    cache_key = (num_partitions, partitioning, dirichlet_alpha, partition_seed)
+
+    if cache_key not in fds_cache:
+        # Create partitioner based on config
+        if partitioning.lower() == "iid":
+            partitioner = IidPartitioner(num_partitions=num_partitions)
+        elif partitioning.lower() in ["dirichlet", "non-iid"]:
+            if dirichlet_alpha is None:
+                raise ValueError("dirichlet_alpha must be provided for Dirichlet partitioning")
+            partitioner = DirichletPartitioner(
+                num_partitions=num_partitions,
+                partition_by="label",
+                alpha=dirichlet_alpha,
+                shuffle=True,
+                seed=partition_seed,
+            )
+        else:
+            raise ValueError(f"Unknown partitioning: {partitioning}")
+
+        fds_cache[cache_key] = FederatedDataset(
             dataset="tanganke/eurosat",
             partitioners={"train": partitioner},
         )
+
+    fds = fds_cache[cache_key]
     partition = fds.load_partition(partition_id)
+
+    # Optionally limit samples per client
+    if max_samples_per_client is not None:
+        subset_size = min(max_samples_per_client, len(partition))
+        partition = partition.shuffle(seed=partition_seed).select(range(subset_size))
+
     # Divide data on each node: 80% train, 20% test
     partition_train_test = partition.train_test_split(test_size=0.2, seed=42)
     # Construct dataloaders
