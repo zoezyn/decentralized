@@ -1,9 +1,10 @@
 """
 Battery Simulation for Satellite Federated Learning
 Simulates solar charging, training costs, and communication costs
+Supports real hardware (CubeSat) battery reading
 """
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional, Callable
 import random
 
 
@@ -20,6 +21,8 @@ class BatterySimulator:
         min_battery_threshold: float = 30.0,
         day_night_cycle: bool = True,
         orbit_period: int = 6,  # rounds per orbit (day/night cycle)
+        cubesat_id: Optional[int] = None,  # Which satellite ID is the real CubeSat
+        cubesat_battery_reader: Optional[Callable[[], float]] = None,  # Function to read CubeSat battery
     ):
         """
         Initialize battery simulator
@@ -33,6 +36,8 @@ class BatterySimulator:
             min_battery_threshold: Minimum battery to participate (%)
             day_night_cycle: Whether to simulate day/night cycles
             orbit_period: Rounds per complete orbit (for day/night)
+            cubesat_id: ID of the real CubeSat (if None, all are simulated)
+            cubesat_battery_reader: Function that returns (battery_pct, operational)
         """
         self.num_satellites = num_satellites
         self.charge_rate = charge_rate
@@ -41,6 +46,8 @@ class BatterySimulator:
         self.min_battery_threshold = min_battery_threshold
         self.day_night_cycle = day_night_cycle
         self.orbit_period = orbit_period
+        self.cubesat_id = cubesat_id
+        self.cubesat_battery_reader = cubesat_battery_reader
         
         # Initialize batteries with some variation
         self.batteries = {
@@ -51,7 +58,7 @@ class BatterySimulator:
         # Ensure all start above threshold
         for i in self.batteries:
             self.batteries[i] = max(self.min_battery_threshold + 5, 
-                                   min(100, self.batteries[i]))
+                                  min(100, self.batteries[i]))
         
         # Track statistics
         self.history = []
@@ -71,6 +78,16 @@ class BatterySimulator:
         orbit_position = (round_num + satellite_id) % self.orbit_period
         return orbit_position < (self.orbit_period // 2)
     
+    def _read_cubesat_battery(self) -> Tuple[float, bool]:
+        """Read real battery from CubeSat hardware"""
+        if self.cubesat_battery_reader:
+            try:
+                return self.cubesat_battery_reader()
+            except Exception as e:
+                print(f"⚠️  Warning: Failed to read CubeSat battery: {e}")
+                return 0.0, False
+        return 0.0, False
+    
     def get_available_clients(self, round_num: int) -> List[int]:
         """
         Get list of satellite IDs that have enough battery to train
@@ -83,10 +100,21 @@ class BatterySimulator:
         """
         available = []
         for sat_id in range(self.num_satellites):
-            if self.batteries[sat_id] >= self.min_battery_threshold:
-                available.append(sat_id)
+            # Check if this is the real CubeSat
+            if sat_id == self.cubesat_id and self.cubesat_battery_reader:
+                battery, operational = self._read_cubesat_battery()
+                self.batteries[sat_id] = battery  # Update stored value
+                
+                if battery >= self.min_battery_threshold and operational:
+                    available.append(sat_id)
+                else:
+                    self.skipped_due_to_battery[sat_id] += 1
             else:
-                self.skipped_due_to_battery[sat_id] += 1
+                # Simulated satellite
+                if self.batteries[sat_id] >= self.min_battery_threshold:
+                    available.append(sat_id)
+                else:
+                    self.skipped_due_to_battery[sat_id] += 1
         
         return available
     
@@ -98,6 +126,10 @@ class BatterySimulator:
             round_num: Current training round
         """
         for sat_id in range(self.num_satellites):
+            # Don't simulate charging for real CubeSat
+            if sat_id == self.cubesat_id:
+                continue
+                
             if self.is_in_sunlight(round_num, sat_id):
                 # Charge battery
                 charge = self.charge_rate
@@ -112,6 +144,10 @@ class BatterySimulator:
             satellite_ids: List of satellites that trained this round
         """
         for sat_id in satellite_ids:
+            # Don't simulate consumption for real CubeSat (it's measured directly)
+            if sat_id == self.cubesat_id:
+                continue
+                
             # Training + communication cost
             total_cost = self.train_cost + self.comm_cost
             self.batteries[sat_id] = max(0, self.batteries[sat_id] - total_cost)
@@ -169,16 +205,29 @@ class BatterySimulator:
         print(f"\n🔋 Battery Status - Round {round_num}")
         print("=" * 70)
         
+        # Read CubeSat battery first if it exists
+        if self.cubesat_id is not None and self.cubesat_battery_reader:
+            battery, operational = self._read_cubesat_battery()
+            self.batteries[self.cubesat_id] = battery
+        
         for sat_id in range(self.num_satellites):
             battery = self.batteries[sat_id]
-            in_sun = "☀️" if self.is_in_sunlight(round_num, sat_id) else "🌑"
+            
+            # Mark real CubeSat differently
+            if sat_id == self.cubesat_id:
+                in_sun = "🛰️ "
+                hw_marker = " (REAL HARDWARE)"
+            else:
+                in_sun = "☀️" if self.is_in_sunlight(round_num, sat_id) else "🌑"
+                hw_marker = ""
+            
             status = "✓" if battery >= self.min_battery_threshold else "✗"
             
             # Battery bar
             bar_length = int(battery / 5)  # 20 chars = 100%
             bar = "█" * bar_length + "░" * (20 - bar_length)
             
-            print(f"  Sat {sat_id} {in_sun} {status} [{bar}] {battery:5.1f}%")
+            print(f"  Sat {sat_id} {in_sun} {status} [{bar}] {battery:5.1f}%{hw_marker}")
         
         print("=" * 70)
         available = self.get_available_clients(round_num)

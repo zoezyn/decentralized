@@ -19,6 +19,7 @@ dependencies = [
     "torch==2.7.1",
     "torchvision==0.22.1",
     "wandb==0.23.0",
+    "pyserial>=3.5",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -48,6 +49,12 @@ comm-cost = 5.0
 min-battery-threshold = 30.0
 day-night-cycle = true
 orbit-period = 6
+
+# CubeSat integration (real hardware)
+cubesat-enabled = false  # Set to true to use real CubeSat
+cubesat-port = "/dev/cu.usbserial-1110"
+cubesat-baud = 9600
+cubesat-id = 0  # Which satellite ID is the CubeSat (0-9)
 
 # Default federation to use when running the app
 [tool.flwr.federations]

@@ -10,6 +10,7 @@ import wandb
 
 from eurosat.task import Net, test, apply_transforms, create_run_dir
 from eurosat.battery_aware_strategy import BatteryAwareFedAvg, print_final_battery_report
+from eurosat.cubesat_battery_reader import initialize_cubesat, read_cubesat_battery, cleanup_cubesat
 
 # Create ServerApp
 app = ServerApp()
@@ -33,10 +34,26 @@ def main(grid: Grid, context: Context) -> None:
     
     # Battery simulation config (optional)
     battery_enabled: bool = context.run_config.get("battery-enabled", True)
+    
+    # CubeSat integration config
+    cubesat_enabled: bool = context.run_config.get("cubesat-enabled", False)
+    cubesat_port: str = context.run_config.get("cubesat-port", "/dev/cu.usbserial-1110")
+    cubesat_baud: int = context.run_config.get("cubesat-baud", 9600)
+    cubesat_id: int = context.run_config.get("cubesat-id", 0)  # Which satellite is the CubeSat
 
     # Load global model
     global_model = Net()
     arrays = ArrayRecord(global_model.state_dict())
+
+    # Initialize CubeSat connection if enabled
+    cubesat_reader = None
+    if cubesat_enabled and battery_enabled:
+        print(f"\n🛰️  Initializing CubeSat on {cubesat_port}...")
+        if initialize_cubesat(cubesat_port, cubesat_baud):
+            cubesat_reader = read_cubesat_battery
+            print(f"   CubeSat will be Satellite {cubesat_id} (real hardware)")
+        else:
+            print("   ⚠️  CubeSat not available, continuing with full simulation")
 
     # Initialize strategy based on configuration
     if battery_enabled:
@@ -50,6 +67,8 @@ def main(grid: Grid, context: Context) -> None:
             'min_battery_threshold': context.run_config.get("min-battery-threshold", 30.0),
             'day_night_cycle': context.run_config.get("day-night-cycle", True),
             'orbit_period': context.run_config.get("orbit-period", 6),
+            'cubesat_id': cubesat_id if cubesat_reader else None,
+            'cubesat_battery_reader': cubesat_reader,
         }
         strategy = BatteryAwareFedAvg(
             fraction_train=fraction_train,
@@ -78,6 +97,10 @@ def main(grid: Grid, context: Context) -> None:
     # Print battery report if battery mode was enabled
     if battery_enabled and isinstance(strategy, BatteryAwareFedAvg):
         print_final_battery_report(strategy)
+
+    # Cleanup CubeSat connection
+    if cubesat_reader:
+        cleanup_cubesat()
 
     # Save final model to disk
     print(f"\nSaving final model to disk at {save_path}...")
