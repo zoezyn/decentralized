@@ -44,20 +44,11 @@ export default function BatteryConsoleView({ isVisible }: BatteryConsoleViewProp
 
   // Get battery level color
   const getBatteryColor = (level: number): string => {
-    if (level >= 70) return "text-green-300";
-    if (level >= 50) return "text-yellow-300";  
-    if (level >= 30) return "text-orange-300";
-    if (level >= 15) return "text-red-300";
-    return "text-red-500";
-  };
-
-  // Get battery bar color
-  const getBatteryBarColor = (level: number): string => {
     if (level >= 70) return "text-green-400";
     if (level >= 50) return "text-yellow-400";  
     if (level >= 30) return "text-orange-400";
     if (level >= 15) return "text-red-400";
-    return "text-red-500";
+    return "text-red-600";
   };
 
   // Format battery bar
@@ -97,7 +88,7 @@ export default function BatteryConsoleView({ isVisible }: BatteryConsoleViewProp
                 <span className={`w-12 ${getBatteryColor(batteryLevel)} text-right`}>
                   {batteryLevel}%
                 </span>
-                <span className={`${getBatteryBarColor(batteryLevel)} font-mono text-xs`}>
+                <span className="text-gray-500 font-mono text-xs">
                   [{getBatteryBar(batteryLevel)}]
                 </span>
                 <span className="w-6">{sunIcon}</span>

@@ -396,57 +396,79 @@ export default function EarthViewer() {
     },
   ];
 
-  const telemetryBySatellite: Record<string, { label: string; value: string; detail: string }[]> = {
-    "sat-forest": [
-      { label: "Battery", value: "88%", detail: "Solar arrays optimized for dense canopy angles" },
-      { label: "Canopy Health", value: "94%", detail: "NDVI index steady across reserve sectors" },
-      { label: "Alert Tier", value: "Low", detail: "No wildfire signatures detected this orbit" },
-    ],
-    "sat-brushland": [
-      { label: "Battery", value: "85%", detail: "Dust shedding cycle finished 2 min ago" },
-      { label: "Shrubland Moisture", value: "41%", detail: "Below seasonal average by 6%" },
-      { label: "Thermal Anomalies", value: "2 hotspots", detail: "Monitoring western ridges" },
-    ],
-    "sat-annual-crop": [
-      { label: "Battery", value: "92%", detail: "Panel tracking aligned to early sunrise" },
-      { label: "Crop Vigor", value: "89%", detail: "Normalized difference moisture rising" },
-      { label: "Data Rate", value: "1.6 Gbps", detail: "Yield forecasts streaming to agronomists" },
-    ],
-    "sat-pasture": [
-      { label: "Battery", value: "79%", detail: "Cloud cover reduced solar gain by 8%" },
-      { label: "Biomass Density", value: "73%", detail: "Grazing pressure within plan" },
-      { label: "Livestock Sensors", value: "177 active", detail: "Telemetry synced to ranch hubs" },
-    ],
-    "sat-permanent-crop": [
-      { label: "Battery", value: "84%", detail: "High-latitude orbit maintaining reserves" },
-      { label: "Orchard Stress Index", value: "12%", detail: "Irrigation anomalies localized" },
-      { label: "Pollination Bands", value: "Green", detail: "Bee activity within optimal range" },
-    ],
-    "sat-highway": [
-      { label: "Battery", value: "87%", detail: "Regenerative braking on reaction wheels engaged" },
-      { label: "Traffic Flow", value: "62 km/h avg", detail: "Morning peak easing along corridor" },
-      { label: "Incident Flags", value: "1 advisory", detail: "Debris near interchange 47" },
-    ],
-    "sat-industrial": [
-      { label: "Battery", value: "90%", detail: "Thermal load balanced via radiator sweep" },
-      { label: "Emission Index", value: "0.64 ppm", detail: "Stacks within compliance" },
-      { label: "Downlink Rate", value: "1.2 Gbps", detail: "High-resolution mapping uplink" },
-    ],
-    "sat-residential": [
-      { label: "Battery", value: "83%", detail: "Night cycle demand offset by super-capacitors" },
-      { label: "Urban Growth", value: "4.1% YoY", detail: "New construction zones mapped" },
-      { label: "Heat Islands", value: "Moderate", detail: "Cooling interventions recommended" },
-    ],
-    "sat-river": [
-      { label: "Battery", value: "89%", detail: "Hydroreflective calibration nominal" },
-      { label: "Flow Rate", value: "3,800 m3/s", detail: "Snowmelt surge trending upward" },
-      { label: "Sediment Load", value: "Low", detail: "Water clarity favorable for habitats" },
-    ],
-    "sat-lake": [
-      { label: "Battery", value: "93%", detail: "Marine-grade panels at peak efficiency" },
-      { label: "Algal Bloom Risk", value: "Minimal", detail: "Chlorophyll-a concentration stable" },
-      { label: "Coastal Coverage", value: "97%", detail: "Buoy network fully synchronized" },
-    ],
+  const getTelemetryBySatellite = (satelliteId: string): { label: string; value: string; detail: string }[] => {
+    // Map frontend satellite ID to backend format and get real battery data
+    const satelliteIndex = satellites.findIndex(sat => sat.id === satelliteId);
+    const backendSatId = `sat-${satelliteIndex}`;
+    const batteryInfo = batteryData[backendSatId];
+    const realBatteryLevel = batteryInfo?.battery ? Math.round(batteryInfo.battery) : 80;
+    const inSunlight = batteryInfo?.in_sunlight ?? true;
+    const canTrain = batteryInfo?.can_train ?? true;
+    
+    const baseTelemetry: Record<string, { label: string; value: string; detail: string }[]> = {
+      "sat-forest": [
+        { label: "Battery", value: `${realBatteryLevel}%`, detail: inSunlight ? "Solar arrays charging" : "Running on battery reserves" },
+        { label: "Training Status", value: canTrain ? "Ready" : "Low Battery", detail: canTrain ? "Available for federated learning" : "Below 30% threshold" },
+        { label: "Canopy Health", value: "94%", detail: "NDVI index steady across reserve sectors" },
+        { label: "Alert Tier", value: "Low", detail: "No wildfire signatures detected this orbit" },
+      ],
+      "sat-brushland": [
+        { label: "Battery", value: `${realBatteryLevel}%`, detail: inSunlight ? "Solar arrays charging" : "Running on battery reserves" },
+        { label: "Training Status", value: canTrain ? "Ready" : "Low Battery", detail: canTrain ? "Available for federated learning" : "Below 30% threshold" },
+        { label: "Shrubland Moisture", value: "41%", detail: "Below seasonal average by 6%" },
+        { label: "Thermal Anomalies", value: "2 hotspots", detail: "Monitoring western ridges" },
+      ],
+      "sat-annual-crop": [
+        { label: "Battery", value: `${realBatteryLevel}%`, detail: inSunlight ? "Solar arrays charging" : "Running on battery reserves" },
+        { label: "Training Status", value: canTrain ? "Ready" : "Low Battery", detail: canTrain ? "Available for federated learning" : "Below 30% threshold" },
+        { label: "Crop Vigor", value: "89%", detail: "Normalized difference moisture rising" },
+        { label: "Data Rate", value: "1.6 Gbps", detail: "Yield forecasts streaming to agronomists" },
+      ],
+      "sat-pasture": [
+        { label: "Battery", value: `${realBatteryLevel}%`, detail: inSunlight ? "Solar arrays charging" : "Running on battery reserves" },
+        { label: "Training Status", value: canTrain ? "Ready" : "Low Battery", detail: canTrain ? "Available for federated learning" : "Below 30% threshold" },
+        { label: "Biomass Density", value: "73%", detail: "Grazing pressure within plan" },
+        { label: "Livestock Sensors", value: "177 active", detail: "Telemetry synced to ranch hubs" },
+      ],
+      "sat-permanent-crop": [
+        { label: "Battery", value: `${realBatteryLevel}%`, detail: inSunlight ? "Solar arrays charging" : "Running on battery reserves" },
+        { label: "Training Status", value: canTrain ? "Ready" : "Low Battery", detail: canTrain ? "Available for federated learning" : "Below 30% threshold" },
+        { label: "Orchard Stress Index", value: "12%", detail: "Irrigation anomalies localized" },
+        { label: "Pollination Bands", value: "Green", detail: "Bee activity within optimal range" },
+      ],
+      "sat-highway": [
+        { label: "Battery", value: `${realBatteryLevel}%`, detail: inSunlight ? "Solar arrays charging" : "Running on battery reserves" },
+        { label: "Training Status", value: canTrain ? "Ready" : "Low Battery", detail: canTrain ? "Available for federated learning" : "Below 30% threshold" },
+        { label: "Traffic Flow", value: "62 km/h avg", detail: "Morning peak easing along corridor" },
+        { label: "Incident Flags", value: "1 advisory", detail: "Debris near interchange 47" },
+      ],
+      "sat-industrial": [
+        { label: "Battery", value: `${realBatteryLevel}%`, detail: inSunlight ? "Solar arrays charging" : "Running on battery reserves" },
+        { label: "Training Status", value: canTrain ? "Ready" : "Low Battery", detail: canTrain ? "Available for federated learning" : "Below 30% threshold" },
+        { label: "Emission Index", value: "0.64 ppm", detail: "Stacks within compliance" },
+        { label: "Downlink Rate", value: "1.2 Gbps", detail: "High-resolution mapping uplink" },
+      ],
+      "sat-residential": [
+        { label: "Battery", value: `${realBatteryLevel}%`, detail: inSunlight ? "Solar arrays charging" : "Running on battery reserves" },
+        { label: "Training Status", value: canTrain ? "Ready" : "Low Battery", detail: canTrain ? "Available for federated learning" : "Below 30% threshold" },
+        { label: "Urban Growth", value: "4.1% YoY", detail: "New construction zones mapped" },
+        { label: "Heat Islands", value: "Moderate", detail: "Cooling interventions recommended" },
+      ],
+      "sat-river": [
+        { label: "Battery", value: `${realBatteryLevel}%`, detail: inSunlight ? "Solar arrays charging" : "Running on battery reserves" },
+        { label: "Training Status", value: canTrain ? "Ready" : "Low Battery", detail: canTrain ? "Available for federated learning" : "Below 30% threshold" },
+        { label: "Flow Rate", value: "3,800 m3/s", detail: "Snowmelt surge trending upward" },
+        { label: "Sediment Load", value: "Low", detail: "Water clarity favorable for habitats" },
+      ],
+      "sat-lake": [
+        { label: "Battery", value: `${realBatteryLevel}%`, detail: inSunlight ? "Solar arrays charging" : "Running on battery reserves" },
+        { label: "Training Status", value: canTrain ? "Ready" : "Low Battery", detail: canTrain ? "Available for federated learning" : "Below 30% threshold" },
+        { label: "Algal Bloom Risk", value: "Minimal", detail: "Chlorophyll-a concentration stable" },
+        { label: "Coastal Coverage", value: "97%", detail: "Buoy network fully synchronized" },
+      ],
+    };
+    
+    return baseTelemetry[satelliteId] || [];
   };
 
   const statusBySatellite: Record<string, string[]> = {
@@ -641,7 +663,7 @@ export default function EarthViewer() {
               <SheetDescription>Realtime status for the selected orbital monitor.</SheetDescription>
             </SheetHeader>
             <div className="grid grid-cols-1 gap-4">
-              {(telemetryBySatellite[selectedSatelliteId] ?? []).map((item) => {
+              {getTelemetryBySatellite(selectedSatelliteId).map((item) => {
                 const isBattery = item.label.toLowerCase().includes('battery');
                 const batteryValue = isBattery ? parseInt(item.value.replace('%', '')) : 0;
                 
@@ -660,11 +682,9 @@ export default function EarthViewer() {
                         </div>
                         <Progress 
                           value={batteryValue} 
-                          className={`w-full h-4 ${
-                            batteryValue > 80 ? '[&>div]:bg-gradient-to-r [&>div]:from-green-400 [&>div]:to-green-600 bg-green-900/20' : 
-                            batteryValue > 50 ? '[&>div]:bg-gradient-to-r [&>div]:from-yellow-400 [&>div]:to-yellow-600 bg-yellow-900/20' : 
-                            batteryValue > 30 ? '[&>div]:bg-gradient-to-r [&>div]:from-orange-400 [&>div]:to-orange-600 bg-orange-900/20' :
-                            '[&>div]:bg-gradient-to-r [&>div]:from-red-400 [&>div]:to-red-600 bg-red-900/20'
+                          className={`w-full h-3 ${
+                            batteryValue > 80 ? 'bg-green-100' : 
+                            batteryValue > 50 ? 'bg-yellow-100' : 'bg-red-100'
                           }`}
                         />
                         <div className="flex justify-between text-xs text-muted-foreground">
