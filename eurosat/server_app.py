@@ -1,5 +1,9 @@
 """eurosat: A Flower / PyTorch app."""
 
+import io
+from datetime import datetime
+from pathlib import Path
+
 import torch
 from datasets import load_dataset
 from flwr.app import ArrayRecord, ConfigRecord, Context, MetricRecord
@@ -11,12 +15,31 @@ import threading
 import requests
 import json
 
-from eurosat.task import Net, test, apply_transforms, create_run_dir
+from eurosat.task import build_model, test, apply_transforms, create_run_dir
 from eurosat.battery_aware_strategy import BatteryAwareFedAvg, print_final_battery_report
 from eurosat.cubesat_battery_reader import initialize_cubesat, read_cubesat_battery, cleanup_cubesat
 
 # Webhook URL for sending battery data to frontend
-WEBHOOK_URL = "http://localhost:8000/api/webhook/battery"
+WEBHOOK_URL = "http://localhost:8001/api/webhook/battery"
+
+_server_test_dataset = None
+
+def _get_server_test_dataset():
+    global _server_test_dataset
+    if _server_test_dataset is None:
+        _server_test_dataset = load_dataset("tanganke/eurosat")["test"].with_transform(apply_transforms)
+    return _server_test_dataset
+
+def evaluate_model_arrays(arrays: ArrayRecord, model_variant: str):
+    """Evaluate given arrays on central test set."""
+    dataset = _get_server_test_dataset()
+    testloader = DataLoader(dataset, batch_size=32)
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    net = build_model(model_variant)
+    net.load_state_dict(arrays.to_torch_state_dict())
+    net.to(device)
+    loss, accuracy = test(net, testloader, device=device)
+    return loss, accuracy
 
 def send_battery_webhook(data, round_num):
     """Send battery and model transmission data to frontend via webhook"""
@@ -54,6 +77,21 @@ class WebhookBatteryAwareFedAvg(BatteryAwareFedAvg):
     def aggregate_train(self, server_round, replies):
         print(f"🔄 WebhookBatteryAwareFedAvg.aggregate_train called for round {server_round}")
         arrays, metrics = super().aggregate_train(server_round, replies)
+        
+        if arrays is not None:
+            state_dict = arrays.to_torch_state_dict()
+            param_count = sum(t.numel() for t in state_dict.values())
+            buffer = io.BytesIO()
+            torch.save(state_dict, buffer)
+            payload_kb = buffer.tell() / 1024
+            print(f"   📦 Round {server_round}: model payload ≈ {payload_kb:.1f} KB ({param_count:,} params)")
+            wandb.log(
+                {
+                    "payload_kb": payload_kb,
+                    "payload_param_count": param_count,
+                },
+                step=server_round,
+            )
         
         # Send battery data via webhook
         if hasattr(self, 'selected_clients_this_round'):
@@ -115,9 +153,43 @@ def main(grid: Grid, context: Context) -> None:
     cubesat_baud: int = context.run_config.get("cubesat-baud", 9600)
     cubesat_id: int = context.run_config.get("cubesat-id", 0)  # Which satellite is the CubeSat
 
+    model_variant: str = context.run_config.get("model-variant", "baseline")
+
     # Load global model
-    global_model = Net()
+    global_model = build_model(model_variant)
     arrays = ArrayRecord(global_model.state_dict())
+    total_params = sum(p.numel() for p in global_model.parameters())
+    buf = io.BytesIO()
+    torch.save(global_model.state_dict(), buf)
+    initial_payload_kb = buf.tell() / 1024
+    print(f"   Model variant '{model_variant}': {total_params:,} params (~{initial_payload_kb:.1f} KB payload)")
+    wandb.config.update(
+        {
+            "model_variant": model_variant,
+            "model_variant_params": total_params,
+            "model_variant_payload_kb": initial_payload_kb,
+            "battery_enabled": battery_enabled,
+            "initial_battery": context.run_config.get("initial-battery", 80.0),
+            "charge_rate": context.run_config.get("charge-rate", 3.0),
+            "train_cost": context.run_config.get("train-cost", 15.0),
+            "comm_cost": context.run_config.get("comm-cost", 5.0),
+            "min_battery_threshold": context.run_config.get("min-battery-threshold", 30.0),
+        }
+    )
+    wandb.log(
+        {
+            "model_variant_payload_kb": initial_payload_kb,
+            "model_variant_params": total_params,
+        },
+        step=0,
+    )
+    wandb.run.summary.update(
+        {
+            "model_variant": model_variant,
+            "model_variant_params": total_params,
+            "model_variant_payload_kb": initial_payload_kb,
+        }
+    )
 
     # Initialize CubeSat connection if enabled
     cubesat_reader = None
@@ -160,12 +232,13 @@ def main(grid: Grid, context: Context) -> None:
     print(f"   Learning rate: {lr}")
     print(f"{'='*70}\n")
     
+    evaluate_fn = get_global_evaluate_fn(strategy, model_variant)
     result = strategy.start(
         grid=grid,
         initial_arrays=arrays,
         train_config=ConfigRecord({"lr": lr}),
         num_rounds=num_rounds,
-        evaluate_fn=get_global_evaluate_fn(strategy),
+        evaluate_fn=evaluate_fn,
     )
 
     # Print battery report if battery mode was enabled
@@ -181,42 +254,59 @@ def main(grid: Grid, context: Context) -> None:
     state_dict = result.arrays.to_torch_state_dict()
     torch.save(state_dict, f"{save_path}/final_model.pt")
     
+    # Run a final evaluation to log comparable metrics
+    final_loss, final_accuracy = evaluate_model_arrays(result.arrays, model_variant)
+    wandb.log(
+        {
+            "final_accuracy": final_accuracy,
+            "final_loss": final_loss,
+            "final_model_payload_kb": initial_payload_kb,
+            "final_model_params": total_params,
+        },
+        step=num_rounds,
+    )
+    wandb.run.summary["final_accuracy"] = final_accuracy
+    wandb.run.summary["final_loss"] = final_loss
+
+    log_row = ",".join(
+        [
+            datetime.now().isoformat(),
+            run_dir,
+            model_variant,
+            str(total_params),
+            f"{initial_payload_kb:.2f}",
+            f"{final_accuracy:.4f}" if final_accuracy is not None else "",
+        ]
+    )
+    log_path = Path("outputs/model_metrics.csv")
+    if not log_path.exists():
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        log_path.write_text("timestamp,run_dir,model_variant,total_params,payload_kb,final_accuracy\n")
+    with log_path.open("a") as log_file:
+        log_file.write(log_row + "\n")
+    print(f"\n📁 Logged run summary to {log_path}")
+    
     print(f"\n{'='*70}")
     print(f"✅ Training Complete!")
     print(f"{'='*70}\n")
 
 
-def get_global_evaluate_fn(strategy):
+def get_global_evaluate_fn(strategy, model_variant: str):
     """Return an evaluation function for server-side evaluation."""
 
     def global_evaluate(server_round: int, arrays: ArrayRecord) -> MetricRecord:
         """Evaluate model on central data."""
 
-        # This is the exact same dataset as the one downloaded by the clients via
-        # FlowerDatasets. However, we don't use FlowerDatasets for the server since
-        # partitioning is not needed.
-        # We make use of the "test" split only
-        global_test_set = load_dataset("tanganke/eurosat")["test"]
-
-        testloader = DataLoader(
-            global_test_set.with_transform(apply_transforms),
-            batch_size=32,
-        )
-        
-        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-        # Apply global model parameters
-        net = Net()
-        net.load_state_dict(arrays.to_torch_state_dict())
-        net.to(device)
-        # Evaluate global model on test set
-        loss, accuracy = test(net, testloader, device=device)
+        loss, accuracy = evaluate_model_arrays(arrays, model_variant)
         
         # Prepare logging dictionary
         log_dict = {
             "round": server_round,
             "Global Test Loss": loss,
             "Global Test Accuracy": accuracy,
+            "model_variant": wandb.config.get("model_variant"),
+            "model_variant_params": wandb.config.get("model_variant_params"),
+            "model_variant_payload_kb": wandb.config.get("model_variant_payload_kb"),
         }
         
         # Add battery information if using battery-aware strategy
