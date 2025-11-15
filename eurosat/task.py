@@ -3,12 +3,12 @@
 import warnings
 from datetime import datetime
 from pathlib import Path
-
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from flwr_datasets import FederatedDataset
-from flwr_datasets.partitioner import IidPartitioner, DirichletPartitioner
+from flwr_datasets.partitioner import IidPartitioner, DirichletPartitioner, DistributionPartitioner
 from torch.utils.data import DataLoader
 from torchvision.transforms import Compose, Normalize, ToTensor
 
@@ -66,7 +66,15 @@ def load_data(partition_id: int, num_partitions: int, partitioner_method: str):
             partitioner = IidPartitioner(num_partitions=num_partitions)
         else:
             print(f"Loading Non-IID partition with {num_partitions} partitions")
-            partitioner = DirichletPartitioner(num_partitions=num_partitions, partition_by='label', alpha=0.1, seed=42)
+            # partitioner = DirichletPartitioner(num_partitions=num_partitions, partition_by='label', alpha=0.1, seed=42)
+            distribution_array = np.full((num_partitions, 1), [1], dtype=float)
+            partitioner = DistributionPartitioner(
+                num_partitions=num_partitions,
+                partition_by="label",
+                num_unique_labels_per_partition=1,
+                preassigned_num_samples_per_label = 5,
+                distribution_array=distribution_array,
+            )
         fds = FederatedDataset(
             dataset="tanganke/eurosat",
             partitioners={"train": partitioner},
