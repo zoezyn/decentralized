@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from flwr_datasets import FederatedDataset
-from flwr_datasets.partitioner import IidPartitioner
+from flwr_datasets.partitioner import IidPartitioner, DirichletPartitioner
 from torch.utils.data import DataLoader
 from torchvision.transforms import Compose, Normalize, ToTensor
 
@@ -48,6 +48,7 @@ fds = None  # Cache FederatedDataset
 
 pytorch_transforms = Compose([ToTensor(), Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
+# partitioner = context.run_config["partitioner"]
 
 def apply_transforms(batch):
     """Apply transforms to the partition from FederatedDataset."""
@@ -55,12 +56,17 @@ def apply_transforms(batch):
     return batch
 
 
-def load_data(partition_id: int, num_partitions: int):
+def load_data(partition_id: int, num_partitions: int, partitioner_method: str):
     """Load partition EuroSAT data."""
     # Only initialize `FederatedDataset` once
     global fds
     if fds is None:
-        partitioner = IidPartitioner(num_partitions=num_partitions)
+        if partitioner_method == 'iid':
+            print(f"Loading IID partition with {num_partitions} partitions")
+            partitioner = IidPartitioner(num_partitions=num_partitions)
+        else:
+            print(f"Loading Non-IID partition with {num_partitions} partitions")
+            partitioner = DirichletPartitioner(num_partitions=num_partitions, partition_by='label', alpha=0.5, seed=42)
         fds = FederatedDataset(
             dataset="tanganke/eurosat",
             partitioners={"train": partitioner},

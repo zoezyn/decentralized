@@ -25,7 +25,8 @@ def train(msg: Message, context: Context):
     # Load the data
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
-    trainloader, _ = load_data(partition_id, num_partitions)
+    partitioner_method = context.run_config["partitioner_method"]
+    trainloader, _ = load_data(partition_id, num_partitions, partitioner_method)
 
     # Call the training function
     train_loss = train_fn(
@@ -60,7 +61,8 @@ def evaluate(msg: Message, context: Context):
     # Load the data
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
-    _, valloader = load_data(partition_id, num_partitions)
+    partitioner_method = context.run_config["partitioner_method"]
+    _, valloader = load_data(partition_id, num_partitions, partitioner_method)
 
     # Call the evaluation function
     eval_loss, eval_acc = test_fn(
