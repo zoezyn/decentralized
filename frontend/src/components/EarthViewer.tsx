@@ -3,6 +3,8 @@ import { OrbitControls, useGLTF, Stars } from "@react-three/drei";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Progress } from "@/components/ui/progress";
+import { Battery, Zap } from "lucide-react";
 import { useApi } from "@/contexts/ApiContext";
 
 function Earth() {
@@ -31,20 +33,62 @@ type SatelliteConfig = {
   initialAngle?: number;
 };
 
-function OrbitingCube({
+function AcrimSatModel() {
+  const { scene } = useGLTF('/models/satellite.glb');
+  console.log('AcrimSAT model loaded');
+  
+  // Clone the scene to avoid issues with multiple renders
+  const clonedScene = scene.clone();
+  
+  return (
+    <primitive 
+      object={clonedScene} 
+      scale={0.5}
+      rotation={[0, 0, 0]}
+    />
+  );
+}
+
+function Jason2Model() {
+  const { scene } = useGLTF('/models/jason2.glb');
+  console.log('OSTM Jason-2 model loaded');
+  
+  // Clone the scene to avoid issues with multiple renders
+  const clonedScene = scene.clone();
+  
+  return (
+    <primitive 
+      object={clonedScene} 
+      scale={0.5}
+      rotation={[0, 0, 0]}
+    />
+  );
+}
+
+function OrbitingSatellite({
   config,
   onSelect,
 }: {
   config: SatelliteConfig;
   onSelect: (satelliteId: string) => void;
 }) {
-  const cubeRef = useRef<THREE.Group>(null);
+  const satelliteRef = useRef<THREE.Group>(null);
   const orbitAngleRef = useRef(config.initialAngle ?? 0);
   const orbitSpeedRef = useRef(config.baseOrbitSpeed * 2);
   const rotationSpeedRef = useRef(config.baseRotationSpeed * 2);
 
   const targetOrbitSpeed = config.baseOrbitSpeed;
   const targetRotationSpeed = config.baseRotationSpeed;
+
+  // AcrimSAT satellites (4 satellites)
+  const acrimSatellites = ['sat-forest', 'sat-highway', 'sat-annual-crop', 'sat-residential'];
+  // Jason-2 satellites (6 remaining satellites)  
+  const jason2Satellites = ['sat-brushland', 'sat-pasture', 'sat-permanent-crop', 'sat-industrial', 'sat-river', 'sat-lake'];
+  
+  const useAcrimSat = acrimSatellites.includes(config.id);
+  const useJason2 = jason2Satellites.includes(config.id);
+
+  console.log(`Satellite ${config.id}: AcrimSAT=${useAcrimSat}, Jason2=${useJason2}`);
 
   const handlePointerOver = useCallback(() => {
     if (typeof document !== "undefined") {
@@ -76,40 +120,67 @@ function OrbitingCube({
   );
 
   useFrame((_, delta) => {
-    if (!cubeRef.current) {
+    if (!satelliteRef.current) {
       return;
     }
 
     orbitSpeedRef.current = THREE.MathUtils.damp(orbitSpeedRef.current, targetOrbitSpeed, 2.5, delta);
     orbitAngleRef.current += orbitSpeedRef.current * delta;
 
-    const x = Math.cos(orbitAngleRef.current) * config.orbitRadius;
-    const z = Math.sin(orbitAngleRef.current) * config.orbitRadius;
-    cubeRef.current.position.set(x, 0, z);
+    // Realistic orbital mechanics with proper polar and equatorial orbits
+    const verticalOrbitSatellites = ['sat-forest', 'sat-brushland', 'sat-highway', 'sat-industrial', 'sat-river'];
+    const isVerticalOrbit = verticalOrbitSatellites.includes(config.id);
+    
+    if (isVerticalOrbit) {
+      // Polar orbit: satellite passes over both poles
+      // Creates a north-south orbital plane that rotates around Earth
+      const orbitPlaneRotation = (config.initialAngle || 0); // Different orbital planes
+      const x = Math.cos(orbitAngleRef.current) * config.orbitRadius * Math.cos(orbitPlaneRotation);
+      const y = Math.sin(orbitAngleRef.current) * config.orbitRadius;
+      const z = Math.cos(orbitAngleRef.current) * config.orbitRadius * Math.sin(orbitPlaneRotation);
+      satelliteRef.current.position.set(x, y, z);
+    } else {
+      // Equatorial orbit: satellite stays above equator
+      // Creates east-west motion around Earth's equator
+      const x = Math.cos(orbitAngleRef.current) * config.orbitRadius;
+      const z = Math.sin(orbitAngleRef.current) * config.orbitRadius;
+      // Slight inclination for visual variety
+      const y = Math.sin(orbitAngleRef.current * 2) * 0.3;
+      satelliteRef.current.position.set(x, y, z);
+    }
 
     rotationSpeedRef.current = THREE.MathUtils.damp(rotationSpeedRef.current, targetRotationSpeed, 3, delta);
     const rotationStep = rotationSpeedRef.current * delta;
-    cubeRef.current.rotation.x += rotationStep;
-    cubeRef.current.rotation.y += rotationStep * 0.8;
+    satelliteRef.current.rotation.x += rotationStep;
+    satelliteRef.current.rotation.y += rotationStep * 0.8;
   });
 
   return (
     <group
-      ref={cubeRef}
+      ref={satelliteRef}
       onClick={handleClick}
       onPointerOver={handlePointerOver}
       onPointerOut={handlePointerOut}
     >
-      <mesh>
-        <boxGeometry args={[0.5, 0.5, 0.5]} />
-        <meshStandardMaterial 
-          color={config.color}
-          emissive={config.color}
-          emissiveIntensity={0.4}
-          metalness={0.8}
-          roughness={0.2}
-        />
-      </mesh>
+      {useAcrimSat ? (
+        // Render AcrimSAT satellite model
+        <AcrimSatModel />
+      ) : useJason2 ? (
+        // Render OSTM Jason-2 satellite model
+        <Jason2Model />
+      ) : (
+        // Fallback to cube (shouldn't happen with current setup)
+        <mesh>
+          <boxGeometry args={[0.5, 0.5, 0.5]} />
+          <meshStandardMaterial 
+            color={config.color}
+            emissive={config.color}
+            emissiveIntensity={0.4}
+            metalness={0.8}
+            roughness={0.2}
+          />
+        </mesh>
+      )}
     </group>
   );
 }
@@ -131,90 +202,90 @@ export default function EarthViewer() {
     {
       id: "sat-forest",
       name: "Forest Canopy Watcher",
-      orbitRadius: 5.4,
-      baseOrbitSpeed: 0.38,
-      baseRotationSpeed: 0.55,
+      orbitRadius: 6.0,  // All satellites at same distance
+      baseOrbitSpeed: 0.08,
+      baseRotationSpeed: 0.1,
       color: "#22c55e",
       initialAngle: 0,
     },
     {
-      id: "sat-brushland",
+      id: "sat-brushland", 
       name: "Brushland Sentinel",
-      orbitRadius: 5.9,
-      baseOrbitSpeed: 0.34,
-      baseRotationSpeed: 0.5,
+      orbitRadius: 6.0,
+      baseOrbitSpeed: 0.07,
+      baseRotationSpeed: 0.09,
       color: "#84cc16",
       initialAngle: Math.PI / 5,
     },
     {
       id: "sat-annual-crop",
-      name: "Crop Cycle Tracker",
-      orbitRadius: 6.4,
-      baseOrbitSpeed: 0.32,
-      baseRotationSpeed: 0.48,
+      name: "Crop Cycle Tracker", 
+      orbitRadius: 6.0,
+      baseOrbitSpeed: 0.06,
+      baseRotationSpeed: 0.08,
       color: "#facc15",
       initialAngle: (2 * Math.PI) / 5,
     },
     {
       id: "sat-pasture",
       name: "Pasture Guardian",
-      orbitRadius: 6.9,
-      baseOrbitSpeed: 0.3,
-      baseRotationSpeed: 0.45,
-      color: "#f97316",
+      orbitRadius: 6.0,
+      baseOrbitSpeed: 0.05,
+      baseRotationSpeed: 0.07,
+      color: "#f97316", 
       initialAngle: (3 * Math.PI) / 5,
     },
     {
       id: "sat-permanent-crop",
       name: "Orchard Monitor",
-      orbitRadius: 7.4,
-      baseOrbitSpeed: 0.28,
-      baseRotationSpeed: 0.42,
+      orbitRadius: 6.0,
+      baseOrbitSpeed: 0.04,
+      baseRotationSpeed: 0.06,
       color: "#fb923c",
       initialAngle: (4 * Math.PI) / 5,
     },
     {
       id: "sat-highway",
       name: "Urban Artery Surveyor",
-      orbitRadius: 7.9,
-      baseOrbitSpeed: 0.26,
-      baseRotationSpeed: 0.46,
+      orbitRadius: 6.0,
+      baseOrbitSpeed: 0.03,
+      baseRotationSpeed: 0.05,
       color: "#6366f1",
       initialAngle: Math.PI,
     },
     {
       id: "sat-industrial",
       name: "Industrial Beacon",
-      orbitRadius: 8.4,
-      baseOrbitSpeed: 0.24,
-      baseRotationSpeed: 0.44,
+      orbitRadius: 6.0,
+      baseOrbitSpeed: 0.02,
+      baseRotationSpeed: 0.04,
       color: "#a855f7",
       initialAngle: (6 * Math.PI) / 5,
     },
     {
       id: "sat-residential",
       name: "Residential Skyline Sentinel",
-      orbitRadius: 8.9,
-      baseOrbitSpeed: 0.22,
-      baseRotationSpeed: 0.4,
+      orbitRadius: 6.0,
+      baseOrbitSpeed: 0.015,
+      baseRotationSpeed: 0.03,
       color: "#ec4899",
       initialAngle: (7 * Math.PI) / 5,
     },
     {
       id: "sat-river",
-      name: "Riverway Sentinel",
-      orbitRadius: 9.4,
-      baseOrbitSpeed: 0.2,
-      baseRotationSpeed: 0.38,
+      name: "Riverway Sentinel", 
+      orbitRadius: 6.0,
+      baseOrbitSpeed: 0.01,
+      baseRotationSpeed: 0.02,
       color: "#0ea5e9",
       initialAngle: (8 * Math.PI) / 5,
     },
     {
       id: "sat-lake",
       name: "Coastal Blueguard",
-      orbitRadius: 9.9,
-      baseOrbitSpeed: 0.18,
-      baseRotationSpeed: 0.35,
+      orbitRadius: 6.0,
+      baseOrbitSpeed: 0.005,
+      baseRotationSpeed: 0.01,
       color: "#38bdf8",
       initialAngle: (9 * Math.PI) / 5,
     },
@@ -344,7 +415,7 @@ export default function EarthViewer() {
           
           <Earth />
           {satellites.map((satellite) => (
-            <OrbitingCube key={satellite.id} config={satellite} onSelect={handleSatelliteSelect} />
+            <OrbitingSatellite key={satellite.id} config={satellite} onSelect={handleSatelliteSelect} />
           ))}
           
           <Stars
@@ -354,7 +425,7 @@ export default function EarthViewer() {
             factor={4} 
             saturation={0} 
             fade 
-            speed={1}
+            speed={0.2}
           />
           
           <OrbitControls 
@@ -375,13 +446,43 @@ export default function EarthViewer() {
               <SheetDescription>Realtime status for the selected orbital monitor.</SheetDescription>
             </SheetHeader>
             <div className="grid grid-cols-1 gap-4">
-              {(telemetryBySatellite[selectedSatelliteId] ?? []).map((item) => (
-                <div key={item.label} className="rounded-lg border border-border/80 bg-secondary/30 p-4">
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">{item.label}</p>
-                  <p className="mt-1 text-2xl font-semibold text-primary">{item.value}</p>
-                  <p className="mt-2 text-sm text-muted-foreground">{item.detail}</p>
-                </div>
-              ))}
+              {(telemetryBySatellite[selectedSatelliteId] ?? []).map((item) => {
+                const isBattery = item.label.toLowerCase().includes('battery');
+                const batteryValue = isBattery ? parseInt(item.value.replace('%', '')) : 0;
+                
+                return (
+                  <div key={item.label} className="rounded-lg border border-border/80 bg-secondary/30 p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      {isBattery && <Battery className="h-4 w-4 text-green-400" />}
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">{item.label}</p>
+                    </div>
+                    
+                    {isBattery ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-2xl font-semibold text-primary">{item.value}</p>
+                          {batteryValue > 80 && <Zap className="h-5 w-5 text-green-400" />}
+                        </div>
+                        <Progress 
+                          value={batteryValue} 
+                          className={`w-full h-3 ${
+                            batteryValue > 80 ? 'bg-green-100' : 
+                            batteryValue > 50 ? 'bg-yellow-100' : 'bg-red-100'
+                          }`}
+                        />
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>0%</span>
+                          <span>100%</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="mt-1 text-2xl font-semibold text-primary">{item.value}</p>
+                    )}
+                    
+                    <p className="mt-2 text-sm text-muted-foreground">{item.detail}</p>
+                  </div>
+                );
+              })}
             </div>
             <div className="space-y-3">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Operational Notes</h3>
