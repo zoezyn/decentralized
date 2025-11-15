@@ -20,6 +20,10 @@ dependencies = [
     "torchvision==0.22.1",
     "wandb==0.23.0",
     "pyserial>=3.5",
+    "requests>=2.31.0",
+    "fastapi>=0.121.2",
+    "uvicorn>=0.38.0",
+    "pydantic>=2.12.4",
 ]
 
 [tool.hatch.build.targets.wheel]
