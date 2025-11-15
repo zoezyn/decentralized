@@ -113,13 +113,13 @@ def test(net, testloader, device):
     return loss, accuracy
 
 
-def create_run_dir() -> tuple[Path, str]:
+def create_run_dir(precision: str = "fp32") -> tuple[Path, str]:
     """Create a directory where to save results from this run."""
-    # Create output directory given current timestamp
+    # Create output directory given current timestamp and precision
     current_time = datetime.now()
     run_dir = current_time.strftime("%Y-%m-%d/%H-%M-%S")
-    # Save path is based on the current directory
-    save_path = Path.cwd() / f"outputs/{run_dir}"
-    save_path.mkdir(parents=True, exist_ok=False)
+    # Save path includes precision
+    save_path = Path.cwd() / f"outputs/{precision}/{run_dir}"
+    save_path.mkdir(parents=True, exist_ok=True)
 
     return run_dir, str(save_path)
