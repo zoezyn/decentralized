@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List
 import uvicorn
 import asyncio
 from datetime import datetime
@@ -34,6 +34,9 @@ class BatteryWebhookData(BaseModel):
     round: int
     battery_levels: Dict[str, Any]
     timestamp: float
+    selected_satellites: Optional[List[int]] = None
+    total_satellites: Optional[int] = None
+    transmission_phase: Optional[str] = None
 
 @app.get("/")
 async def root():
@@ -54,13 +57,25 @@ async def receive_battery_webhook(data: BatteryWebhookData):
             "received_at": datetime.now().timestamp()
         }
         
+        # Add FL-specific data if available
+        if data.selected_satellites is not None:
+            latest_battery_data["selected_satellites"] = data.selected_satellites
+        if data.total_satellites is not None:
+            latest_battery_data["total_satellites"] = data.total_satellites
+        if data.transmission_phase is not None:
+            latest_battery_data["transmission_phase"] = data.transmission_phase
+        
         # Add to history (keep last 50 entries)
         battery_history.append(latest_battery_data.copy())
         if len(battery_history) > 50:
             battery_history.pop(0)
         
-        print(f"🔋 Received battery data for round {data.round}")
+        print(f"🔋 Received {data.type} for round {data.round}")
         print(f"   Satellites: {len(data.battery_levels)}")
+        if data.selected_satellites:
+            print(f"   Selected for training: {data.selected_satellites}")
+        if data.transmission_phase:
+            print(f"   Phase: {data.transmission_phase}")
         for sat_id, info in data.battery_levels.items():
             battery_level = info.get('battery', 0)
             status = info.get('status', 'unknown')

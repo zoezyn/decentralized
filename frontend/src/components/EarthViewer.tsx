@@ -255,6 +255,8 @@ export default function EarthViewer() {
   const [isTraining, setIsTraining] = useState(false);
   const [highlightedSatellite, setHighlightedSatellite] = useState<string | null>(null);
   const [batteryData, setBatteryData] = useState<Record<string, any>>({});
+  const [modelTransmissions, setModelTransmissions] = useState<Array<{id: string, from: string, to: string, progress: number, type: 'upload' | 'download'}>>([]);
+  const [roundInfo, setRoundInfo] = useState<{round: number, phase: string, selectedSats: number[]}>({round: 0, phase: '', selectedSats: []});
   const { fetchData } = useApi();
 
   // Fetch battery data periodically
@@ -263,7 +265,23 @@ export default function EarthViewer() {
       try {
         const response = await fetchData('/api/battery/latest');
         if (response.status === 'success' && response.data?.battery_levels) {
+          console.log('Received battery data:', response.data.battery_levels);
           setBatteryData(response.data.battery_levels);
+          
+          // Update FL round info if available
+          if (response.data.type === 'fl_update' && response.data.selected_satellites) {
+            console.log('FL Update received:', response.data);
+          console.log('Battery data keys:', Object.keys(response.data.battery_levels || {}));
+            setRoundInfo({
+              round: response.data.round,
+              selectedSats: response.data.selected_satellites
+            });
+          } else {
+            // Fallback: try to extract round info from battery data
+            if (response.data.round) {
+              setRoundInfo(prev => ({...prev, round: response.data.round}));
+            }
+          }
         }
       } catch (error) {
         // Silently handle battery fetch errors
@@ -508,6 +526,57 @@ export default function EarthViewer() {
       {/* Battery Console View */}
       <BatteryConsoleView isVisible={isTraining} />
 
+      {/* Federated Learning Status */}
+      {isTraining && (
+        <div className="absolute top-96 right-4 z-10 bg-black/90 text-green-400 p-3 rounded-lg border border-green-400/30 font-mono text-xs max-w-xs">
+          <div className="mb-2 text-center">
+            <div className="text-green-200">🤖 FEDERATED LEARNING</div>
+            <div className="text-xs text-green-600">Round {roundInfo.round || 'Waiting...'}</div>
+          </div>
+          
+          <div className="space-y-2">
+            <div className="text-xs">
+              <span className="text-yellow-400">Training Satellites:</span>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {satellites.map((sat, idx) => {
+                  const isSelected = roundInfo.selectedSats.includes(idx);
+                  // Map frontend satellite index to backend ID format
+                  const backendSatId = `sat-${idx}`;
+                  const batteryInfo = batteryData[backendSatId];
+                  const canTrain = batteryInfo?.can_train !== false; // Default to true (green) if no data
+                  
+                  return (
+                    <span 
+                      key={sat.id} 
+                      className={`px-2 py-1 rounded text-xs ${
+                        isSelected 
+                          ? 'bg-green-600 text-white' 
+                          : canTrain 
+                          ? 'bg-gray-600 text-gray-300'
+                          : 'bg-red-800 text-red-300'
+                      }`}
+                    >
+                      {idx}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+            
+            <div className="text-xs border-t border-green-400/30 pt-2">
+              <div className="flex justify-between">
+                <span>Active:</span>
+                <span className="text-green-300">{roundInfo.selectedSats.length}/10</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Phase:</span>
+                <span className="text-yellow-300">Model Aggregation</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       <Canvas
         camera={{ position: [0, 0, 8], fov: 45 }}
@@ -525,8 +594,10 @@ export default function EarthViewer() {
           <pointLight position={[0, -10, 0]} intensity={0.8} color="#4a9eff" />
           
           <Earth />
-          {satellites.map((satellite) => {
-            const batteryInfo = batteryData[satellite.id];
+          {satellites.map((satellite, idx) => {
+            // Map frontend satellite index to backend ID format
+            const backendSatId = `sat-${idx}`;
+            const batteryInfo = batteryData[backendSatId];
             const batteryLevel = batteryInfo?.battery || 80;
             const batteryColor = getBatteryColor(batteryLevel);
             

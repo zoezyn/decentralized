@@ -1,29 +1,20 @@
-import { useEffect, useState } from 'react';
-import { useApi } from '@/contexts/ApiContext';
+import { useApi } from "@/contexts/ApiContext";
+import { useEffect, useState } from "react";
 
-interface BatteryData {
+interface BatteryInfo {
   battery: number;
   in_sunlight: boolean;
   can_train: boolean;
   status: string;
 }
 
-interface BatteryUpdate {
-  type: string;
-  round: number;
-  battery_levels: Record<string, BatteryData>;
-  timestamp: string;
+interface BatteryConsoleViewProps {
+  isVisible: boolean;
 }
 
-interface BatteryResponse {
-  status: string;
-  data?: BatteryUpdate;
-  message?: string;
-}
-
-export default function BatteryConsoleView({ isVisible = false }: { isVisible?: boolean }) {
-  const [batteryData, setBatteryData] = useState<BatteryUpdate | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+export default function BatteryConsoleView({ isVisible }: BatteryConsoleViewProps) {
+  const [batteryData, setBatteryData] = useState<Record<string, BatteryInfo>>({});
+  const [currentRound, setCurrentRound] = useState<number>(0);
   const { fetchData } = useApi();
 
   useEffect(() => {
@@ -31,79 +22,86 @@ export default function BatteryConsoleView({ isVisible = false }: { isVisible?: 
 
     const fetchBatteryData = async () => {
       try {
-        setIsLoading(true);
-        const response: BatteryResponse = await fetchData('/api/battery/latest');
-        
-        if (response.status === 'success' && response.data) {
-          setBatteryData(response.data);
+        const response = await fetchData('/api/battery/latest');
+        if (response.status === 'success' && response.data?.battery_levels) {
+          setBatteryData(response.data.battery_levels);
+          if (response.data.round) {
+            setCurrentRound(response.data.round);
+          }
         }
       } catch (error) {
-        console.log('Battery data not available yet:', error);
-      } finally {
-        setIsLoading(false);
+        console.log('Battery fetch error:', error);
       }
     };
 
-    // Fetch immediately
+    const interval = setInterval(fetchBatteryData, 500);
     fetchBatteryData();
-
-    // Set up polling for updates
-    const interval = setInterval(fetchBatteryData, 200); // Update every 200ms
 
     return () => clearInterval(interval);
   }, [isVisible, fetchData]);
 
-  if (!isVisible || !batteryData) {
-    return null;
-  }
+  if (!isVisible) return null;
 
-  const satellites = Object.entries(batteryData.battery_levels);
-  const roundNumber = batteryData.round;
+  // Get battery level color
+  const getBatteryColor = (level: number): string => {
+    if (level >= 70) return "text-green-400";
+    if (level >= 50) return "text-yellow-400";  
+    if (level >= 30) return "text-orange-400";
+    if (level >= 15) return "text-red-400";
+    return "text-red-600";
+  };
+
+  // Format battery bar
+  const getBatteryBar = (level: number): string => {
+    const barLength = Math.floor(level / 5); // 20 char bar max
+    const filledBars = "█".repeat(barLength);
+    const emptyBars = "░".repeat(20 - barLength);
+    return filledBars + emptyBars;
+  };
 
   return (
-    <div className="absolute top-4 right-4 z-10 bg-black/90 text-green-400 p-4 rounded-lg border border-green-400/30 font-mono text-sm max-w-md">
-      <div className="mb-2 text-center">
-        <div className="text-green-200">🛰️ FEDERATED LEARNING ROUND {roundNumber} 🛰️</div>
-        <div className="text-xs text-green-600">Battery Status Report</div>
+    <div className="absolute top-16 left-4 z-10 bg-black/95 text-green-400 p-4 rounded-lg border border-green-400/30 font-mono text-xs max-w-md">
+      <div className="mb-3">
+        <div className="text-green-200 text-center mb-1">🔋 SATELLITE BATTERY STATUS</div>
+        <div className="text-center text-xs text-green-600">Round {currentRound}</div>
+        <div className="text-center text-xs text-gray-400">Battery Threshold: 30%</div>
       </div>
       
-      <div className="space-y-1">
-        {satellites.map(([satId, data]) => {
-          const satNumber = satId.replace('sat-', '');
-          const batteryPercent = Math.round(data.battery);
-          const barLength = Math.floor(batteryPercent / 5); // 20 chars max
-          const barFilled = '█'.repeat(barLength);
-          const barEmpty = '░'.repeat(20 - barLength);
-          
-          // Determine color based on battery level
-          let batteryColor = 'text-red-400';
-          if (batteryPercent >= 80) batteryColor = 'text-green-400';
-          else if (batteryPercent >= 50) batteryColor = 'text-yellow-400';
-          else if (batteryPercent >= 30) batteryColor = 'text-orange-400';
-          
-          const sunIcon = data.in_sunlight ? '☀️' : '🌙';
-          const statusIcon = data.can_train ? '✓' : '✗';
-          const trainingIndicator = data.status === 'operational' ? '🚀' : '⚠️';
-          
-          return (
-            <div key={satId} className="flex items-center gap-2 text-xs">
-              <span className="w-12">Sat {satNumber}</span>
-              <span className="w-4">{sunIcon}</span>
-              <span className="w-4">{statusIcon}</span>
-              <span className={`w-4 ${batteryColor}`}>[</span>
-              <span className={batteryColor}>{barFilled}</span>
-              <span className="text-gray-600">{barEmpty}</span>
-              <span className={`w-4 ${batteryColor}`}>]</span>
-              <span className={`w-12 ${batteryColor}`}>{batteryPercent.toString().padStart(3, ' ')}%</span>
-              <span className="w-4">{trainingIndicator}</span>
-            </div>
-          );
-        })}
+      <div className="space-y-1 max-h-64 overflow-y-auto">
+        {Object.entries(batteryData)
+          .sort(([a], [b]) => {
+            const aNum = parseInt(a.replace('sat-', ''));
+            const bNum = parseInt(b.replace('sat-', ''));
+            return aNum - bNum;
+          })
+          .map(([satId, info]) => {
+            const batteryLevel = Math.round(info.battery);
+            const canTrain = info.can_train;
+            const status = canTrain ? "✓" : "✗";
+            const statusColor = canTrain ? "text-green-400" : "text-red-400";
+            const sunIcon = info.in_sunlight ? "☀️" : "🌙";
+            
+            return (
+              <div key={satId} className="flex items-center space-x-2">
+                <span className="w-8 text-gray-300">{satId.replace('sat-', 'S')}</span>
+                <span className={`w-4 ${statusColor}`}>{status}</span>
+                <span className={`w-12 ${getBatteryColor(batteryLevel)} text-right`}>
+                  {batteryLevel}%
+                </span>
+                <span className="text-gray-500 font-mono text-xs">
+                  [{getBatteryBar(batteryLevel)}]
+                </span>
+                <span className="w-6">{sunIcon}</span>
+              </div>
+            );
+          })}
       </div>
       
-      <div className="mt-2 pt-2 border-t border-green-400/30 text-xs text-green-600">
-        Last Update: {new Date(batteryData.timestamp).toLocaleTimeString()}
-        {isLoading && <span className="ml-2 animate-pulse">⟳</span>}
+      <div className="mt-3 pt-2 border-t border-green-400/30 text-xs">
+        <div className="flex justify-between">
+          <span>Legend:</span>
+          <span className="text-gray-400">✓=Ready ✗=Low ☀️=Day 🌙=Night</span>
+        </div>
       </div>
     </div>
   );
