@@ -11,6 +11,7 @@ from flwr_datasets import FederatedDataset
 from flwr_datasets.partitioner import IidPartitioner
 from torch.utils.data import DataLoader
 from torchvision.transforms import Compose, Normalize, ToTensor
+from torchvision import models
 
 warnings.filterwarnings(
     "ignore",
@@ -19,34 +20,25 @@ warnings.filterwarnings(
 )
 
 class Net(nn.Module):
-    """Model (simple CNN adapted from 'PyTorch: A 60 Minute Blitz')"""
+    """ResNet-18 model adapted for EuroSAT (10 classes)"""
 
-    def __init__(self):
+    def __init__(self, num_classes=10):
         super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(3, 32, 5)
-        self.bn1 = nn.BatchNorm2d(32)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(32, 64, 5)
-        self.bn2 = nn.BatchNorm2d(64)
-        self.conv3 = nn.Conv2d(64, 96, 3)
-        self.bn3 = nn.BatchNorm2d(96)
-        self.fc1 = nn.Linear(96 * 5 * 5, 128)
-        self.fc2 = nn.Linear(128, 128)
-        self.fc3 = nn.Linear(128, 10)
+        # Load pre-trained ResNet-18
+        self.resnet = models.resnet18(pretrained=True)
+        # Replace the final layer for EuroSAT (10 classes)
+        self.resnet.fc = nn.Linear(self.resnet.fc.in_features, num_classes)
 
     def forward(self, x):
-        x = self.pool(F.relu(self.bn1(self.conv1(x))))
-        x = self.pool(F.relu(self.bn2(self.conv2(x))))
-        x = self.pool(F.relu(self.bn3(self.conv3(x))))
-        x = x.view(-1, 96 * 5 * 5)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        return self.fc3(x)
+        return self.resnet(x)
 
 
 fds = None  # Cache FederatedDataset
 
-pytorch_transforms = Compose([ToTensor(), Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+pytorch_transforms = Compose([
+    ToTensor(), 
+    Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # ImageNet normalization for pre-trained ResNet
+])
 
 
 def apply_transforms(batch):
