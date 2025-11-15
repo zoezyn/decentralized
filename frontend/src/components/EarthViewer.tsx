@@ -306,7 +306,7 @@ export default function EarthViewer() {
   const satellites: SatelliteConfig[] = [
     {
       id: "sat-forest",
-      name: "Forest Canopy Watcher",
+      name: "sat-0",
       orbitRadius: 6.0,  // All satellites at same distance
       baseOrbitSpeed: 0.08,
       baseRotationSpeed: 0.1,
@@ -315,7 +315,7 @@ export default function EarthViewer() {
     },
     {
       id: "sat-brushland", 
-      name: "Brushland Sentinel",
+      name: "sat-1",
       orbitRadius: 6.0,
       baseOrbitSpeed: 0.07,
       baseRotationSpeed: 0.09,
@@ -324,7 +324,7 @@ export default function EarthViewer() {
     },
     {
       id: "sat-annual-crop",
-      name: "Crop Cycle Tracker", 
+      name: "sat-2", 
       orbitRadius: 6.0,
       baseOrbitSpeed: 0.06,
       baseRotationSpeed: 0.08,
@@ -333,7 +333,7 @@ export default function EarthViewer() {
     },
     {
       id: "sat-pasture",
-      name: "Pasture Guardian",
+      name: "sat-3",
       orbitRadius: 6.0,
       baseOrbitSpeed: 0.05,
       baseRotationSpeed: 0.07,
@@ -342,7 +342,7 @@ export default function EarthViewer() {
     },
     {
       id: "sat-permanent-crop",
-      name: "Orchard Monitor",
+      name: "sat-4",
       orbitRadius: 6.0,
       baseOrbitSpeed: 0.04,
       baseRotationSpeed: 0.06,
@@ -351,7 +351,7 @@ export default function EarthViewer() {
     },
     {
       id: "sat-highway",
-      name: "Urban Artery Surveyor",
+      name: "sat-5",
       orbitRadius: 6.0,
       baseOrbitSpeed: 0.03,
       baseRotationSpeed: 0.05,
@@ -360,7 +360,7 @@ export default function EarthViewer() {
     },
     {
       id: "sat-industrial",
-      name: "Industrial Beacon",
+      name: "sat-6",
       orbitRadius: 6.0,
       baseOrbitSpeed: 0.02,
       baseRotationSpeed: 0.04,
@@ -369,7 +369,7 @@ export default function EarthViewer() {
     },
     {
       id: "sat-residential",
-      name: "Residential Skyline Sentinel",
+      name: "sat-7",
       orbitRadius: 6.0,
       baseOrbitSpeed: 0.015,
       baseRotationSpeed: 0.03,
@@ -378,7 +378,7 @@ export default function EarthViewer() {
     },
     {
       id: "sat-river",
-      name: "Riverway Sentinel", 
+      name: "sat-8", 
       orbitRadius: 6.0,
       baseOrbitSpeed: 0.01,
       baseRotationSpeed: 0.02,
@@ -387,7 +387,7 @@ export default function EarthViewer() {
     },
     {
       id: "sat-lake",
-      name: "Coastal Blueguard",
+      name: "sat-9",
       orbitRadius: 6.0,
       baseOrbitSpeed: 0.005,
       baseRotationSpeed: 0.01,
@@ -399,76 +399,21 @@ export default function EarthViewer() {
   const getTelemetryBySatellite = (satelliteId: string): { label: string; value: string; detail: string }[] => {
     // Map frontend satellite ID to backend format and get real battery data
     const satelliteIndex = satellites.findIndex(sat => sat.id === satelliteId);
+    const satellite = satellites[satelliteIndex];
     const backendSatId = `sat-${satelliteIndex}`;
     const batteryInfo = batteryData[backendSatId];
     const realBatteryLevel = batteryInfo?.battery ? Math.round(batteryInfo.battery) : 80;
     const inSunlight = batteryInfo?.in_sunlight ?? true;
     const canTrain = batteryInfo?.can_train ?? true;
     
-    const baseTelemetry: Record<string, { label: string; value: string; detail: string }[]> = {
-      "sat-forest": [
-        { label: "Battery", value: `${realBatteryLevel}%`, detail: inSunlight ? "Solar arrays charging" : "Running on battery reserves" },
-        { label: "Training Status", value: canTrain ? "Ready" : "Low Battery", detail: canTrain ? "Available for federated learning" : "Below 30% threshold" },
-        { label: "Canopy Health", value: "94%", detail: "NDVI index steady across reserve sectors" },
-        { label: "Alert Tier", value: "Low", detail: "No wildfire signatures detected this orbit" },
-      ],
-      "sat-brushland": [
-        { label: "Battery", value: `${realBatteryLevel}%`, detail: inSunlight ? "Solar arrays charging" : "Running on battery reserves" },
-        { label: "Training Status", value: canTrain ? "Ready" : "Low Battery", detail: canTrain ? "Available for federated learning" : "Below 30% threshold" },
-        { label: "Shrubland Moisture", value: "41%", detail: "Below seasonal average by 6%" },
-        { label: "Thermal Anomalies", value: "2 hotspots", detail: "Monitoring western ridges" },
-      ],
-      "sat-annual-crop": [
-        { label: "Battery", value: `${realBatteryLevel}%`, detail: inSunlight ? "Solar arrays charging" : "Running on battery reserves" },
-        { label: "Training Status", value: canTrain ? "Ready" : "Low Battery", detail: canTrain ? "Available for federated learning" : "Below 30% threshold" },
-        { label: "Crop Vigor", value: "89%", detail: "Normalized difference moisture rising" },
-        { label: "Data Rate", value: "1.6 Gbps", detail: "Yield forecasts streaming to agronomists" },
-      ],
-      "sat-pasture": [
-        { label: "Battery", value: `${realBatteryLevel}%`, detail: inSunlight ? "Solar arrays charging" : "Running on battery reserves" },
-        { label: "Training Status", value: canTrain ? "Ready" : "Low Battery", detail: canTrain ? "Available for federated learning" : "Below 30% threshold" },
-        { label: "Biomass Density", value: "73%", detail: "Grazing pressure within plan" },
-        { label: "Livestock Sensors", value: "177 active", detail: "Telemetry synced to ranch hubs" },
-      ],
-      "sat-permanent-crop": [
-        { label: "Battery", value: `${realBatteryLevel}%`, detail: inSunlight ? "Solar arrays charging" : "Running on battery reserves" },
-        { label: "Training Status", value: canTrain ? "Ready" : "Low Battery", detail: canTrain ? "Available for federated learning" : "Below 30% threshold" },
-        { label: "Orchard Stress Index", value: "12%", detail: "Irrigation anomalies localized" },
-        { label: "Pollination Bands", value: "Green", detail: "Bee activity within optimal range" },
-      ],
-      "sat-highway": [
-        { label: "Battery", value: `${realBatteryLevel}%`, detail: inSunlight ? "Solar arrays charging" : "Running on battery reserves" },
-        { label: "Training Status", value: canTrain ? "Ready" : "Low Battery", detail: canTrain ? "Available for federated learning" : "Below 30% threshold" },
-        { label: "Traffic Flow", value: "62 km/h avg", detail: "Morning peak easing along corridor" },
-        { label: "Incident Flags", value: "1 advisory", detail: "Debris near interchange 47" },
-      ],
-      "sat-industrial": [
-        { label: "Battery", value: `${realBatteryLevel}%`, detail: inSunlight ? "Solar arrays charging" : "Running on battery reserves" },
-        { label: "Training Status", value: canTrain ? "Ready" : "Low Battery", detail: canTrain ? "Available for federated learning" : "Below 30% threshold" },
-        { label: "Emission Index", value: "0.64 ppm", detail: "Stacks within compliance" },
-        { label: "Downlink Rate", value: "1.2 Gbps", detail: "High-resolution mapping uplink" },
-      ],
-      "sat-residential": [
-        { label: "Battery", value: `${realBatteryLevel}%`, detail: inSunlight ? "Solar arrays charging" : "Running on battery reserves" },
-        { label: "Training Status", value: canTrain ? "Ready" : "Low Battery", detail: canTrain ? "Available for federated learning" : "Below 30% threshold" },
-        { label: "Urban Growth", value: "4.1% YoY", detail: "New construction zones mapped" },
-        { label: "Heat Islands", value: "Moderate", detail: "Cooling interventions recommended" },
-      ],
-      "sat-river": [
-        { label: "Battery", value: `${realBatteryLevel}%`, detail: inSunlight ? "Solar arrays charging" : "Running on battery reserves" },
-        { label: "Training Status", value: canTrain ? "Ready" : "Low Battery", detail: canTrain ? "Available for federated learning" : "Below 30% threshold" },
-        { label: "Flow Rate", value: "3,800 m3/s", detail: "Snowmelt surge trending upward" },
-        { label: "Sediment Load", value: "Low", detail: "Water clarity favorable for habitats" },
-      ],
-      "sat-lake": [
-        { label: "Battery", value: `${realBatteryLevel}%`, detail: inSunlight ? "Solar arrays charging" : "Running on battery reserves" },
-        { label: "Training Status", value: canTrain ? "Ready" : "Low Battery", detail: canTrain ? "Available for federated learning" : "Below 30% threshold" },
-        { label: "Algal Bloom Risk", value: "Minimal", detail: "Chlorophyll-a concentration stable" },
-        { label: "Coastal Coverage", value: "97%", detail: "Buoy network fully synchronized" },
-      ],
-    };
+    const baseTelemetry = [
+      { label: "Satellite", value: backendSatId, detail: `Index: ${satelliteIndex}` },
+      { label: "Battery", value: `${realBatteryLevel}%`, detail: inSunlight ? "Solar arrays charging" : "Running on battery reserves" },
+      { label: "Training Status", value: canTrain ? "Ready" : "Low Battery", detail: canTrain ? "Available for federated learning" : "Below 30% threshold" },
+      { label: "Day/Night", value: inSunlight ? "Day" : "Night", detail: inSunlight ? "In sunlight - charging" : "In shadow - using battery" },
+    ];
     
-    return baseTelemetry[satelliteId] || [];
+    return baseTelemetry;
   };
 
   const statusBySatellite: Record<string, string[]> = {
