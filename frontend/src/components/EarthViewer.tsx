@@ -660,9 +660,11 @@ export default function EarthViewer() {
                         </div>
                         <Progress 
                           value={batteryValue} 
-                          className={`w-full h-3 ${
-                            batteryValue > 80 ? 'bg-green-100' : 
-                            batteryValue > 50 ? 'bg-yellow-100' : 'bg-red-100'
+                          className={`w-full h-4 ${
+                            batteryValue > 80 ? '[&>div]:bg-gradient-to-r [&>div]:from-green-400 [&>div]:to-green-600 bg-green-900/20' : 
+                            batteryValue > 50 ? '[&>div]:bg-gradient-to-r [&>div]:from-yellow-400 [&>div]:to-yellow-600 bg-yellow-900/20' : 
+                            batteryValue > 30 ? '[&>div]:bg-gradient-to-r [&>div]:from-orange-400 [&>div]:to-orange-600 bg-orange-900/20' :
+                            '[&>div]:bg-gradient-to-r [&>div]:from-red-400 [&>div]:to-red-600 bg-red-900/20'
                           }`}
                         />
                         <div className="flex justify-between text-xs text-muted-foreground">
