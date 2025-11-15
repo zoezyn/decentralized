@@ -3,8 +3,9 @@ import { OrbitControls, useGLTF, Stars } from "@react-three/drei";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Battery, Zap } from "lucide-react";
+import { Battery, Zap, Play } from "lucide-react";
 import { useApi } from "@/contexts/ApiContext";
 
 function Earth() {
@@ -68,9 +69,11 @@ function Jason2Model() {
 function OrbitingSatellite({
   config,
   onSelect,
+  isHighlighted = false,
 }: {
   config: SatelliteConfig;
   onSelect: (satelliteId: string) => void;
+  isHighlighted?: boolean;
 }) {
   const satelliteRef = useRef<THREE.Group>(null);
   const orbitAngleRef = useRef(config.initialAngle ?? 0);
@@ -181,6 +184,19 @@ function OrbitingSatellite({
           />
         </mesh>
       )}
+      
+      {/* White border highlight when training */}
+      {isHighlighted && (
+        <mesh>
+          <boxGeometry args={[0.8, 0.8, 0.8]} />
+          <meshBasicMaterial 
+            color="#ffffff"
+            wireframe
+            transparent
+            opacity={0.9}
+          />
+        </mesh>
+      )}
     </group>
   );
 }
@@ -196,6 +212,8 @@ function Loader() {
 
 export default function EarthViewer() {
   const [selectedSatelliteId, setSelectedSatelliteId] = useState<string | null>(null);
+  const [isTraining, setIsTraining] = useState(false);
+  const [highlightedSatellite, setHighlightedSatellite] = useState<string | null>(null);
   const { fetchData } = useApi();
 
   const satellites: SatelliteConfig[] = [
@@ -401,8 +419,41 @@ export default function EarthViewer() {
     setSelectedSatelliteId(satelliteId);
   }, []);
 
+  const startTraining = useCallback(() => {
+    if (isTraining) return;
+    
+    setIsTraining(true);
+    let currentIndex = 0;
+    
+    const highlightNext = () => {
+      if (currentIndex < satellites.length) {
+        setHighlightedSatellite(satellites[currentIndex].id);
+        currentIndex++;
+        setTimeout(highlightNext, 1000); // Highlight each satellite for 1 second
+      } else {
+        // Training complete - reset highlighting
+        setHighlightedSatellite(null);
+        setIsTraining(false);
+      }
+    };
+    
+    highlightNext();
+  }, [isTraining, satellites]);
+
   return (
     <div className="w-full h-screen relative">
+      {/* Training Button */}
+      <div className="absolute top-4 left-4 z-10">
+        <Button
+          onClick={startTraining}
+          disabled={isTraining}
+          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+        >
+          <Play className="h-4 w-4 mr-2" />
+          {isTraining ? 'Training...' : 'Train'}
+        </Button>
+      </div>
+
       <Canvas
         camera={{ position: [0, 0, 8], fov: 45 }}
         className="bg-background"
@@ -415,7 +466,12 @@ export default function EarthViewer() {
           
           <Earth />
           {satellites.map((satellite) => (
-            <OrbitingSatellite key={satellite.id} config={satellite} onSelect={handleSatelliteSelect} />
+            <OrbitingSatellite 
+              key={satellite.id} 
+              config={satellite} 
+              onSelect={handleSatelliteSelect}
+              isHighlighted={highlightedSatellite === satellite.id}
+            />
           ))}
           
           <Stars
