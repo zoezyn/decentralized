@@ -434,7 +434,7 @@ export default function EarthViewer() {
             minDistance={5}
             maxDistance={40}
             autoRotate
-            autoRotateSpeed={0.5}
+            autoRotateSpeed={0.1}
           />
         </Suspense>
       </Canvas>
