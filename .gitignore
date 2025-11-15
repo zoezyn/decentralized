@@ -219,3 +219,5 @@ Thumbs.db
 
 # Node.js (for any frontend components)
 node_modules/
+eurosat/__pycache__/*
+wandb/

@@ -66,7 +66,7 @@ def load_data(partition_id: int, num_partitions: int, partitioner_method: str):
             partitioner = IidPartitioner(num_partitions=num_partitions)
         else:
             print(f"Loading Non-IID partition with {num_partitions} partitions")
-            partitioner = DirichletPartitioner(num_partitions=num_partitions, partition_by='label', alpha=0.5, seed=42)
+            partitioner = DirichletPartitioner(num_partitions=num_partitions, partition_by='label', alpha=0.1, seed=42)
         fds = FederatedDataset(
             dataset="tanganke/eurosat",
             partitioners={"train": partitioner},
