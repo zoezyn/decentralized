@@ -4,7 +4,7 @@ import torch
 from flwr.app import ArrayRecord, Context, Message, MetricRecord, RecordDict
 from flwr.clientapp import ClientApp
 
-from eurosat.task import Net, load_data
+from eurosat.task import build_model, load_data
 from eurosat.task import test as test_fn
 from eurosat.task import train as train_fn
 
@@ -17,7 +17,7 @@ def train(msg: Message, context: Context):
     """Train the model on local data."""
 
     # Load the model and initialize it with the received weights
-    model = Net()
+    model = build_model(context.run_config.get("model-variant", "baseline"))
     model.load_state_dict(msg.content["arrays"].to_torch_state_dict())
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.to(device)
@@ -25,7 +25,8 @@ def train(msg: Message, context: Context):
     # Load the data
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
-    trainloader, _ = load_data(partition_id, num_partitions)
+    partitioner_method = context.run_config["partitioner_method"]
+    trainloader, _ = load_data(partition_id, num_partitions, partitioner_method)
 
     # Call the training function
     train_loss = train_fn(
@@ -52,7 +53,7 @@ def evaluate(msg: Message, context: Context):
     """Evaluate the model on local data."""
 
     # Load the model and initialize it with the received weights
-    model = Net()
+    model = build_model(context.run_config.get("model-variant", "baseline"))
     model.load_state_dict(msg.content["arrays"].to_torch_state_dict())
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model.to(device)
@@ -60,7 +61,8 @@ def evaluate(msg: Message, context: Context):
     # Load the data
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
-    _, valloader = load_data(partition_id, num_partitions)
+    partitioner_method = context.run_config["partitioner_method"]
+    _, valloader = load_data(partition_id, num_partitions, partitioner_method)
 
     # Call the evaluation function
     eval_loss, eval_acc = test_fn(

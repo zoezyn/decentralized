@@ -134,6 +134,5 @@ async def get_battery_status():
     return {"status": "success", "data": summary}
 
 if __name__ == "__main__":
-    print("🚀 Starting Battery Webhook Server on http://localhost:8000")
     print("📡 Ready to receive battery data from Flower...")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)

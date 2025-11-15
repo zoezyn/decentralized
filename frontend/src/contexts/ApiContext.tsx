@@ -13,7 +13,7 @@ interface ApiProviderProps {
 }
 
 export const ApiProvider: React.FC<ApiProviderProps> = ({ children }) => {
-  const baseUrl = 'http://localhost:8000';
+  const baseUrl = 'http://localhost:8001';
 
   const fetchData = async (endpoint: string) => {
     const response = await fetch(`${baseUrl}${endpoint}`);
