@@ -464,6 +464,11 @@ export default function EarthViewer() {
           <pointLight position={[-10, -10, -5]} intensity={1.5} color="#0ea5e9" />
           <hemisphereLight args={["#8cc0ff", "#050505", 0.6]} />
           
+          {/* Rim lighting for dramatic effect */}
+          <directionalLight position={[-5, 0, -5]} intensity={0.5} color="#ffffff" />
+          <pointLight position={[0, 10, 0]} intensity={0.8} color="#4a9eff" />
+          <pointLight position={[0, -10, 0]} intensity={0.8} color="#4a9eff" />
+          
           <Earth />
           {satellites.map((satellite) => (
             <OrbitingSatellite 
